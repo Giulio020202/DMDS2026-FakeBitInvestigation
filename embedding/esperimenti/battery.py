@@ -178,3 +178,34 @@ def battery(wm):
             yield "loc-awgn+blur", f"awgn {s}+blur {b} su {mname}", localize(wm, blur(awgn(wm, s), b), m)
         for b, s, a in [(2, 4, 2), (3, 10, 2)]:
             yield "loc-blur+sharp", f"blur {b}+sharp {s},{a} su {mname}", localize(wm, sharpening(blur(wm, b), s, a), m)
+
+
+def battery_v3_extra(wm):
+    """(14/10) Attacchi pensati CONTRO la detection con predizione dell'attacco: rumore prima
+    del JPEG (rende il JPEG non piu' prevedibile), doppio JPEG, parametri fuori dalla griglia
+    del predittore, catene di tre attacchi."""
+    for s in [1, 2, 3, 5, 8]:
+        for q in [5, 8, 12, 20]:
+            yield "anti-awgn+jpeg", f"awgn {s} + jpeg {q}", jpeg(awgn(wm, s), q)
+    for q1 in [10, 20, 30, 50]:
+        for q2 in [5, 7, 10, 15]:
+            yield "anti-2jpeg", f"jpeg {q1} + jpeg {q2}", jpeg(jpeg(wm, q1), q2)
+    for b in [0.65, 0.95, 1.15, 1.4]:
+        for q in [5, 8, 12, 20]:
+            yield "anti-blur+jpeg", f"blur {b} + jpeg {q}", jpeg(blur(wm, b), q)
+    for q in [5, 10, 20]:
+        for b in [0.65, 1.15]:
+            yield "anti-jpeg+blur", f"jpeg {q} + blur {b}", blur(jpeg(wm, q), b)
+        yield "anti-sharp+jpeg", f"sharp 1,0.5 + jpeg {q}", jpeg(sharpening(wm, 1, 0.5), q)
+        yield "anti-3", f"median 3 + awgn 2 + jpeg {q}", jpeg(awgn(median_nd(wm, 3), 2), q)
+        yield "anti-3", f"blur 0.8 + jpeg {q} + blur 0.6", blur(jpeg(blur(wm, 0.8), q), 0.6)
+        yield "anti-3", f"resize lab 0.5 + jpeg {q} + median 3", median_nd(jpeg(resizing(wm, 0.5), q), 3)
+    m = masks(wm)["lisce50"]
+    for s in [2, 4]:
+        for q in [3, 5, 8]:
+            yield "anti-loc", f"awgn {s} + jpeg {q} su lisce50", localize(wm, jpeg(awgn(wm, s), q), m)
+
+
+def battery_v3(wm):
+    yield from battery(wm)
+    yield from battery_v3_extra(wm)

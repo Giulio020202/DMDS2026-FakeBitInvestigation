@@ -7,7 +7,7 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 import core, detectors, battery as B                  # noqa: E402
 import importlib.util                                 # noqa: E402
-spec = importlib.util.spec_from_file_location("det", os.path.join(ROOT, "detection_fakebitinvestigation.py"))
+spec = importlib.util.spec_from_file_location("det", os.path.join(ROOT, "v1.0", "detection_fakebitinvestigation.py"))
 det = importlib.util.module_from_spec(spec); spec.loader.exec_module(det)
 
 w = 2.0 * np.load(os.path.join(ROOT, "fakebitinvestigation.npy")).astype(float) - 1
@@ -29,7 +29,7 @@ for name in ["0000", "0070", "0042", "0090"]:
             t = time.time(); o1, o2 = det.detection(po, pw, pa); times.append(time.time() - t)
         assert buf.getvalue() == "", "la detection ha stampato qualcosa!"
         s = max(f(att) for f in ref.values())
-        exp = int(s >= det.TAU and o2 > 25)
+        exp = int(s >= det.TAU)          # regolamento aggiornato: nessun controllo sul WPSNR
         mism += exp != o1; n += 1
         print(f"{name} {k:20s} output1={o1} output2={o2:9.2f}  sim_esperimenti={s:+.3f}  {'OK' if exp == o1 else 'DIVERSO'}")
         if k == "originale": assert o1 == 0

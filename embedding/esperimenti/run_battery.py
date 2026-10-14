@@ -16,8 +16,9 @@ import numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import core                      # noqa: E402
+from progress import pmap                    # noqa: E402
 import detectors                 # noqa: E402
-from battery import battery      # noqa: E402
+from battery import battery, battery_v3      # noqa: E402
 
 ROOT = os.path.dirname(HERE)
 
@@ -39,7 +40,7 @@ def run_one(args):
     dets = detectors.build(o, wm, cfg)
     name = os.path.splitext(os.path.basename(path))[0]
     rows = []
-    for fam, an, att in battery(wm):
+    for fam, an, att in (battery_v3(wm) if cfg.get('v3') else battery(wm)):
         q = core.wpsnr_fast(wm, att)
         rows.append(dict(img=name, family=fam, attack=an, wpsnr=q,
                          sim={k: d(att) for k, d in dets.items()}))
@@ -59,9 +60,10 @@ def main():
     ap.add_argument("--demod", type=float, default=0.0)
     ap.add_argument("--transform", default="dct", choices=["dct", "dwt"])
     ap.add_argument("--subset", default="all", choices=["all", "A", "B"])
+    ap.add_argument("--v3", action="store_true", help="batteria v3 = v2 + attacchi anti-predizione")
     ap.add_argument("--folder", default="", help="cartella di BMP alternativa (es. esperimenti/set_c)")
     a = ap.parse_args()
-    cfg = dict(target=a.target, rmin=a.rmin, rmax=a.rmax, gamma=a.gamma, transform=a.transform, demod=a.demod, dets=a.dets.split(","))
+    cfg = dict(target=a.target, rmin=a.rmin, rmax=a.rmax, gamma=a.gamma, transform=a.transform, demod=a.demod, dets=a.dets.split(","), v3=a.v3)
     imgs = sorted(glob.glob(os.path.join(a.folder, "*.bmp"))) if a.folder else all_images()
     if a.subset != "all":
         from analyze import split
@@ -72,7 +74,7 @@ def main():
         imgs = imgs[:a.limit]
     t = time.time()
     with Pool(a.procs) as p:
-        res = p.map(run_one, [(i, cfg) for i in imgs], chunksize=1)
+        res = pmap(p, run_one, [(i, cfg) for i in imgs], a.tag)
     out = os.path.join(HERE, "risultati", a.tag + ".pkl")
     with open(out, "wb") as f:
         pickle.dump(dict(cfg=cfg, res=res), f)

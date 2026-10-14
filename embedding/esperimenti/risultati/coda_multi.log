@@ -1,0 +1,45 @@
+== base [('dct', 32, 128, 1.0)]  52 img, 601s, WPSNR emb 62.050-62.054
+  [concat] H0 n=353600 media +0.0303 std 0.0224 q99.9 0.1102 max 0.161; originale max 0.064
+     tau FPR0.1%  0.1102: rotte 43/52 (83%)  WPSNR medio 37.27  max 42.1
+     tau 0.11     0.1100: rotte 43/52 (83%)  WPSNR medio 37.27  max 42.1
+  [maxpart] H0 n=353600 media +0.0303 std 0.0224 q99.9 0.1102 max 0.161; originale max 0.064
+     tau FPR0.1%  0.1102: rotte 43/52 (83%)  WPSNR medio 37.27  max 42.1
+     tau 0.11     0.1100: rotte 43/52 (83%)  WPSNR medio 37.27  max 42.1
+== hi3 [('dct', 32, 128, 1.0), ('dct', 200, 320, 3.0)]  52 img, 692s, WPSNR emb 62.050-62.053
+  [concat] H0 n=353600 media +0.0185 std 0.0151 q99.9 0.0887 max 0.134; originale max 0.043
+     tau FPR0.1%  0.0887: rotte 49/52 (94%)  WPSNR medio 39.64  max 48.7
+     tau 0.11     0.1100: rotte 50/52 (96%)  WPSNR medio 40.07  max 48.7
+  [maxpart] H0 n=353600 media +0.0433 std 0.0201 q99.9 0.1156 max 0.174; originale max 0.072
+     tau FPR0.1%  0.1156: rotte 46/52 (88%)  WPSNR medio 38.04  max 43.0
+     tau 0.11     0.1100: rotte 45/52 (87%)  WPSNR medio 37.78  max 43.0
+== hi6 [('dct', 32, 128, 1.0), ('dct', 200, 320, 6.0)]  52 img, 686s, WPSNR emb 62.050-62.054
+  [concat] H0 n=353600 media +0.0174 std 0.0154 q99.9 0.0900 max 0.135; originale max 0.041
+     tau FPR0.1%  0.0900: rotte 49/52 (94%)  WPSNR medio 40.23  max 50.5
+     tau 0.11     0.1100: rotte 50/52 (96%)  WPSNR medio 40.56  max 50.5
+  [maxpart] H0 n=353600 media +0.0434 std 0.0201 q99.9 0.1154 max 0.165; originale max 0.074
+     tau FPR0.1%  0.1154: rotte 48/52 (92%)  WPSNR medio 38.85  max 45.6
+     tau 0.11     0.1100: rotte 48/52 (92%)  WPSNR medio 38.67  max 45.6
+== lo_mid [('dct', 8, 56, 1.0), ('dct', 56, 140, 1.0)]  52 img, 693s, WPSNR emb 62.050-62.055
+  [concat] H0 n=353600 media +0.0223 std 0.0171 q99.9 0.0857 max 0.129; originale max 0.062
+     tau FPR0.1%  0.0857: rotte 42/52 (81%)  WPSNR medio 37.89  max 41.6
+     tau 0.11     0.1100: rotte 51/52 (98%)  WPSNR medio 38.57  max 44.9
+  [maxpart] H0 n=353600 media +0.0420 std 0.0204 q99.9 0.1147 max 0.156; originale max 0.098
+     tau FPR0.1%  0.1147: rotte 47/52 (90%)  WPSNR medio 38.08  max 41.9
+     tau 0.11     0.1100: rotte 44/52 (85%)  WPSNR medio 38.00  max 41.6
+== dct_dwt34 [('dct', 32, 128, 1.0), ('dwt', (3, 4), 1.0)]  52 img, 865s, WPSNR emb 62.050-62.054
+  [concat] H0 n=353600 media +0.0222 std 0.0167 q99.9 0.0832 max 0.126; originale max 0.075
+     tau FPR0.1%  0.0832: rotte 37/52 (71%)  WPSNR medio 37.04  max 41.9
+     tau 0.11     0.1100: rotte 49/52 (94%)  WPSNR medio 37.54  max 42.9
+  [maxpart] H0 n=353600 media +0.0425 std 0.0202 q99.9 0.1153 max 0.157; originale max 0.125
+     tau FPR0.1%  0.1153: rotte 47/52 (90%)  WPSNR medio 37.35  max 42.4
+     tau 0.11     0.1100: rotte 42/52 (81%)  WPSNR medio 37.31  max 42.1
+== dct_dwt2 [('dct', 32, 128, 1.0), ('dwt', (2,), 3.0)]  52 img, 865s, WPSNR emb 62.050-62.057
+  [concat] H0 n=353600 media +0.0197 std 0.0164 q99.9 0.0889 max 0.142; originale max 0.055
+     tau FPR0.1%  0.0889: rotte 50/52 (96%)  WPSNR medio 38.99  max 47.7
+     tau 0.11     0.1100: rotte 51/52 (98%)  WPSNR medio 39.48  max 48.1
+  [maxpart] H0 n=353600 media +0.0430 std 0.0201 q99.9 0.1153 max 0.157; originale max 0.092
+     tau FPR0.1%  0.1153: rotte 50/52 (96%)  WPSNR medio 38.55  max 45.7
+     tau 0.11     0.1100: rotte 49/52 (94%)  WPSNR medio 38.40  max 44.9
+CODA MULTI FINITA
+esperimenti/coda_multi.sh: riga 10: kill: (44718) - Nessun processo corrisponde
+esperimenti/coda_multi.sh: riga 10: kill: (44719) - Nessun processo corrisponde

@@ -17,7 +17,7 @@ con quattro modifiche pensate per la challenge:
      (GAMMA). Il WPSNR dei lab non cambia dove mettiamo l'energia, mentre per
      l'attaccante toglierla dalle texture costa molto di piu' (vedi sez. 11 del .md).
 
-Regole rispettate (1BattleRules2026.pdf):
+Regole rispettate (document.pdf, regolamento aggiornato):
   - firma embedding(input1, input2) -> output1
       input1 = stringa col nome/percorso dell'immagine originale (BMP 512x512 grigi)
       input2 = stringa col nome/percorso del watermark (.npy, 1024 bit 0/1)

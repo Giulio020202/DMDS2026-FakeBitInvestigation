@@ -21,8 +21,8 @@ Come funziona:
        cosi' le zone devastate da un attacco localizzato contano meno di quelle intatte.
        Il peso dipende solo da attaccata e originale, quindi su un'immagine che non contiene
        il nostro watermark la similarita' resta centrata in 0 (misurato: nessun bias);
-  4. presente se similarita' >= TAU; in piu' output1 = 0 se WPSNR <= 25 (immagine distrutta,
-     penalita' a p.8).
+  4. presente se similarita' >= TAU. La decisione dipende SOLO dalla similarita': il regolamento
+     aggiornato vieta di saltare la detection o di forzare output1 in base al WPSNR (anche < 25 dB).
 
 Regole rispettate: file unico, nessun percorso relativo, nessuno script esterno, unica
 funzione "esterna" e' il WPSNR dei lab (copiato qui sotto), nessuna print, nessuna finestra,
@@ -188,5 +188,5 @@ def detection(input1, input2, input3):
     sim = _score(W_ext, _attacked_vectors(c0, uu, vv, original, attacked))
 
     output2 = wpsnr(watermarked, attacked)
-    output1 = 1 if (sim >= TAU and output2 > 25) else 0
+    output1 = 1 if sim >= TAU else 0
     return output1, output2

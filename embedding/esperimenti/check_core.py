@@ -1,10 +1,12 @@
-"""Verifica che core.py dia gli stessi numeri del codice ufficiale (WPSNR dei lab, embedding)."""
-import sys, time
+"""Verifica che core.py dia gli stessi numeri del codice ufficiale v1.0 (WPSNR dei lab, embedding).
+Uso (da embedding/): python esperimenti/check_core.py"""
+import os, sys, time
 import cv2, numpy as np
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import core
 from core import emb
 
-imgs = ["sample-images/0000.bmp", "sample-images/0070.bmp", "tree.bmp"]
+imgs = ["sample-images/0000.bmp", "sample-images/0070.bmp", "gara2022/tree.bmp"]
 w = 2.0 * np.load("fakebitinvestigation.npy").astype(float) - 1
 rng = np.random.default_rng(0)
 maxdiff = 0.0

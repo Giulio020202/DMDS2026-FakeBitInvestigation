@@ -18,6 +18,9 @@ Quindi se l'attaccata non contiene il nostro watermark, sim ha media 0 e dev. st
              watermark e lo "fa ricomparire"). NON usare. Tenuto solo per documentazione.
   sq:<win>:<eps> : come sp ma con rho = 1 / (media locale di (attaccata - ORIGINALE)^2 + eps).
              Se l'attaccata non contiene il nostro watermark, rho non dipende da w -> nessun bias.
+  pr       : (14/10) PREDIZIONE dell'attacco: T stimato da originale e attaccata (predict.py),
+             estrazione da (attaccata - T(originale) + originale). Scelta di T indipendente da w.
+  prsq:<win>:<eps> : pr + pesatura spaziale calcolata sul residuo (attaccata - T(originale)).
   rs_<det> : come <det> ma provando anche a "de-stirare" l'attaccata (resize del lab che esce
              a 510..514 px e viene tagliato/esteso): max sui candidati
 """
@@ -26,6 +29,7 @@ import numpy as np
 from scipy.ndimage import uniform_filter
 
 import core
+import predict
 
 WIN = 15                       # finestra (in coefficienti DCT) per stimare guadagno e rumore
 STRETCH = (510, 511, 513, 514)  # dimensioni "intermedie" del resize del lab da compensare
@@ -87,6 +91,15 @@ def build(original, wm, cfg):
         c.ex = lambda img: ex0(o + (np.asarray(img, dtype=np.float64) - o) / M)
         c.W_ext = c.ex(w)
 
+    memo = {}
+
+    def pred(a):
+        # la stessa attaccata viene passata a tutti i detector: predizione calcolata una volta sola
+        key = (id(a), a.shape, float(a[::37, ::37].sum()))
+        if memo.get('k') != key:
+            memo['k'], memo['v'] = key, predict.predict_fast(original, np.clip(np.rint(a), 0, 255).astype(np.uint8))[0]   # versione veloce (14/10)
+        return memo['v']
+
     def make(kind):
         """kind -> f(immagine attaccata float) -> similarita'"""
         if kind == "cos":
@@ -100,6 +113,17 @@ def build(original, wm, cfg):
             def f(a):
                 rho = 1.0 / (uniform_filter((a - w) ** 2, win) + eps)
                 return core.cosine(c.W_ext, c.ex.from_dct(core.dct2(rho * (a - o) + o)))
+            return f
+        if kind == "pr":
+            return lambda a: core.cosine(c.W_ext, c.ex(a - pred(a) + o))
+        if kind.startswith("prsq:"):
+            _, win, eps = kind.split(":")
+            win, eps = int(win), float(eps)
+
+            def f(a):
+                r = a - pred(a)
+                rho = 1.0 / (uniform_filter(r ** 2, win) + eps)
+                return core.cosine(c.W_ext, c.ex(rho * r + o))
             return f
         if kind.startswith("sq:"):
             _, win, eps = kind.split(":")

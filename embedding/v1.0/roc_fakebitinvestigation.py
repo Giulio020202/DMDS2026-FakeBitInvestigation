@@ -16,7 +16,7 @@ Segue la procedura di p.4 del regolamento (Lab4, ROC-curves, esempio 2):
 
 Questo codice NON fa parte della detection (p.4: la soglia si calcola una volta sola, fuori).
 
-Uso (dalla cartella del progetto):
+Uso (da qualunque cartella; di default usa ../sample-images e ../fakebitinvestigation.npy):
     python roc_fakebitinvestigation.py [cartella_immagini] [n_attacchi_per_immagine]
 Output: stampa tau e salva la curva in roc_fakebitinvestigation.png
 """
@@ -38,7 +38,8 @@ from sklearn.metrics import roc_curve, auc
 import embedding_fakebitinvestigation as emb
 import detection_fakebitinvestigation as det
 
-WATERMARK = "fakebitinvestigation.npy"
+HERE = os.path.dirname(os.path.abspath(__file__))
+WATERMARK = os.path.join(HERE, "..", "fakebitinvestigation.npy")   # watermark e immagini sono nella cartella superiore
 FPR_TARGET = 0.001      # FPR scelta per tau (il regolamento ammette [0, 0.1])
 N_RANDOM = 10           # watermark casuali per ogni attacco (campioni con label 0)
 SEED = 2026
@@ -138,7 +139,7 @@ def _one_image(args):
 
 
 def main():
-    folder = sys.argv[1] if len(sys.argv) > 1 else "sample-images"
+    folder = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, "..", "sample-images")
     n_att = int(sys.argv[2]) if len(sys.argv) > 2 else 40
     files = sorted(glob.glob(os.path.join(folder, "*.bmp")))
     t0 = time.time()
@@ -177,7 +178,7 @@ def main():
     plt.xlim(0, 1); plt.ylim(0, 1.01)
     plt.xlabel("False Positive Rate"); plt.ylabel("True Positive Rate")
     plt.title("ROC - fakebitinvestigation"); plt.legend(loc="lower right")
-    plt.savefig("roc_fakebitinvestigation.png", dpi=120, bbox_inches="tight")
+    plt.savefig(os.path.join(HERE, "roc_fakebitinvestigation.png"), dpi=120, bbox_inches="tight")
 
 
 if __name__ == "__main__":

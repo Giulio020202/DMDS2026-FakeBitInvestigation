@@ -546,7 +546,7 @@ così le zone intatte contano molto e quelle devastate poco. L'estrazione è lin
 
 - File unico, firma `detection(input1, input2, input3)`, legge le tre immagini con cv2 dai tre percorsi, contiene una copia identica del WPSNR dei lab, nessun percorso relativo, nessuna print, nessuna finestra.
 - Coppie ricalcolate dall'originale con le stesse costanti dell'embedding; `W_ext` estratto dalla watermarkata, mai letto da file.
-- `output1 = 1` se la similarità ≥ τ **e** WPSNR > 25 (sotto i 25 dB l'immagine è "distrutta" e dire "presente" verrebbe penalizzato, p.8).
+- `output1 = 1` se la similarità ≥ τ **e** WPSNR > 25 (sotto i 25 dB l'immagine è "distrutta" e dire "presente" verrebbe penalizzato, p.8). **Aggiornamento 14/10: il controllo sul WPSNR è stato tolto perché il regolamento aggiornato lo vieta (vedi §12.6).**
 - **Caso limite corretto**: su immagini senza contenuto nella banda (costante, gradiente) i coefficienti dell'originale valgono 0 e l'estrazione divideva per zero: watermark non trovato nemmeno nella watermarkata e *warning* di NumPy stampati su stderr (rischio penalità per "stampa"). Ora al denominatore usiamo `max(|C|, 1)`: sulle foto naturali non cambia niente (il coefficiente scelto più piccolo vale 13,2), sui 6 casi limite sintetici originale → 0 e watermarkata → 1 senza warning.
 - Controlli (`esperimenti/check_detection.py`): originale → 0, watermarkata → 1, nessuna stampa, decisioni identiche a quelle degli esperimenti (32/32).
 - **Tempo**: a CPU libera 0,51 s in media, 0,61 s al massimo; 0,96 s in un processo nuovo con gli import. Quasi tutto è il WPSNR dei lab (convoluzione 41×41), che lasciamo identico.
@@ -688,7 +688,7 @@ Vincoli del regolamento (p.5 e p.8) e come li rispettiamo:
 | originale passata come attaccata → "assente" | l'estrazione sull'originale dà 0 esatto (§5.4) |
 | niente print, niente finestre | nessuna `print`, e abbiamo eliminato anche i *warning* di NumPy (§11.4) |
 | meno di 5 secondi | circa 0,5–1 s (§11.4) |
-| penalità se trova il watermark in immagini distrutte (WPSNR ≤ 25) | se `output2 ≤ 25` rispondiamo sempre 0 |
+| penalità se trova il watermark in immagini distrutte (WPSNR ≤ 25) | ~~se `output2 ≤ 25` rispondiamo sempre 0~~ **vietato dal regolamento aggiornato (14/10)**: la decisione dipende solo dalla similarità (vedi la nota in §12.6) |
 
 > 🗣 **In parole povere**: la detection è il "test del DNA" del nostro watermark. Riceve l'immagine di partenza, quella marchiata e quella che qualcuno ha manomesso, e deve dire se nella manomessa c'è ancora la nostra firma. Non le è permesso avere in tasca la firma: deve ricavarla ogni volta dalla watermarkata.
 
@@ -795,6 +795,10 @@ output1 = 1 if (sim >= TAU and output2 > 25) else 0
 
 - `TAU = 0,11` viene dalla ROC (§13).
 - `output2 > 25`: se l'attaccata ha WPSNR ≤ 25 è un'immagine "distrutta" e il regolamento penalizza chi ci trova il watermark (p.8). Il nostro watermark è abbastanza robusto da sopravvivere anche ad attacchi distruttivi, quindi senza questo controllo rischieremmo la penalità. Sopra i 25 dB rispondiamo onestamente.
+
+> ⚠️ **Aggiornamento del 14/10: regolamento nuovo.** La versione aggiornata del regolamento dice: *"The detection code must always run the watermark detection algorithm and compute output1 from its result. An if statement that skips detection or forces output1 based on the WPSNR is not allowed, including for severely degraded images with WPSNR < 25 [dB]."* Quindi il controllo `output2 > 25` **non è più ammesso** e l'abbiamo tolto: ora la riga è `output1 = 1 if sim >= TAU else 0`. La penalità per le immagini distrutte però è rimasta, quindi abbiamo misurato cosa succede senza il controllo (13 immagini, solo gli attacchi che portano il WPSNR a ≤ 25 dB): il watermark risulta "presente" in **30 casi su 88**. Nero, bianco e negativo danno sempre "assente" da soli, il rumore fortissimo quasi sempre (AWGN σ = 120: presente 1/13); il problema è quasi solo lo **sharpening fortissimo** (presente 25/25, similarità fino a 0,72), più il blur σ = 8 (4/4). Lo sharpening amplifica le frequenze medie dove sta il nostro watermark, e grazie alle coppie differenziali il coseno non cambia: il watermark c'è davvero, ma l'immagine è "distrutta". Abbiamo deciso di lasciarla così: lo scopo della regola nuova è che la detection non rifiuti un watermark presente per una questione di WPSNR, quindi rispondiamo onestamente anche sotto i 25 dB.
+>
+> 🗣 **In parole povere**: prima avevamo un "interruttore" che diceva "se l'immagine è rovinatissima, rispondi no". Ora l'interruttore è vietato, quindi la detection deve dire no da sola. Lo fa quasi sempre, tranne quando l'immagine è stata "nitidizzata" all'esagerazione: lì il nostro watermark diventa addirittura più forte.
 - Il WPSNR è calcolato con lo stesso codice dei lab, quindi è esattamente il numero che userà il sito.
 
 ### 12.7 Esempio numerico

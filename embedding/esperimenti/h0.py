@@ -14,6 +14,7 @@ import cv2, numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import core, detectors, battery as B          # noqa: E402
+from progress import pmap                    # noqa: E402
 from run_battery import all_images, ROOT       # noqa: E402
 
 
@@ -62,7 +63,7 @@ def main():
     gamma = float(sys.argv[4]) if len(sys.argv) > 4 else 0.0
     imgs = all_images()
     with Pool(13) as p:
-        res = p.map(run_one, [(im, dets, K, 1000 + i, gamma) for i, im in enumerate(imgs)], chunksize=1)
+        res = pmap(p, run_one, [(im, dets, K, 1000 + i, gamma) for i, im in enumerate(imgs)], "h0 " + tag)
     agg = {}
     for case in ("altro_wm", "orig_attaccata"):
         agg[case] = {d: np.concatenate([r[case][d] for r in res]) for d in dets}
