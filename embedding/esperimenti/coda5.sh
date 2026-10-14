@@ -14,5 +14,5 @@ $PY esperimenti/distrutte.py 0.11 --dets $D
 echo "### 2) batteria v3, 26 immagini di A"
 $PY esperimenti/run_battery.py --tag v3A26_fast --subset A --limit 26 --procs 13 --v3 --dets $D
 echo "### 3) falsi positivi realistici"
-(cd esperimenti && $PY h0.py v3 "$D" 40)
+(cd esperimenti && ../$PY h0.py v3 "$D" 40)   # PY e' relativo a embedding/
 echo CODA5 FINITA

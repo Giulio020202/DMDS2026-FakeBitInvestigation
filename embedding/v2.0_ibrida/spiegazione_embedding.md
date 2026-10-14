@@ -501,6 +501,8 @@ Risultato per la v2.0:
 
 La ROC è salvata in `roc_fakebitinvestigation.png`.
 
+**Aggiornamento (14/10 sera).** Lo script `roc_fakebitinvestigation.py` è stato esteso con i controlli del Lab 4: oltre ai watermark casuali (H0-R, quelli del regolamento) usa come casi "watermark assente" anche **lo stesso attacco applicato all'originale** (H0-A) e **lo stesso attacco applicato a un'immagine con il watermark di un altro gruppo** (H0-B). Divide le immagini in **calibrazione** (70) e **test** (31, mai usate per scegliere τ). τ diventa la soglia più bassa con FPR ≤ 0,1% su **ciascuno** dei tre tipi, e sul test viene solo verificata. È lo stesso controllo della §A7.3, ma dentro il file ufficiale. La run completa non l'abbiamo ancora fatta: i numeri qui sopra e il grafico `roc_fakebitinvestigation.png` sono della versione precedente dello script.
+
 > 🗣 **In parole povere**: facciamo migliaia di prove in cui sappiamo la risposta giusta ("c'è" oppure "non c'è") e mettiamo l'asticella dove, tra tutte le prove "non c'è", la supera meno di una su mille.
 
 ### A7.3 Il controllo in più: falsi positivi "realistici"
@@ -687,7 +689,16 @@ Perché due bande DCT non aiutano: le due bande reagiscono quasi allo stesso mod
 
 **Le misure.** Con l'attacco noto esattamente, un JPEG a qualità 5 (≈ 36 dB) passa da similarità 0,06–0,16 a 0,25–0,40. Con l'attacco stimato (versione veloce, `esperimenti/predict.py`): mediano 5 da 0,27–0,32 a 0,83–0,91; JPEG 4 da 0,09–0,13 a 0,30–0,31; mediano 3 + JPEG 6 da 0,11 a 0,27–0,31. Attacchi pensati apposta per ingannarla (rumore prima del JPEG, doppio JPEG, parametri fuori griglia) riducono il guadagno; per questo la detection terrebbe sempre il massimo con le varianti attuali.
 
-**Tempi e immagini distrutte** (misurati a CPU libera, un processo, 13 immagini): una chiamata a tutti i detector, predizione compresa, impiega **0,36 s** in media e **0,87 s** al massimo; sulle immagini distrutte (WPSNR ≤ 25) la detection con predizione dice "presente" in 31 casi su 88, contro 30 su 88 senza. Il confronto completo a parità di falsi positivi (batteria con 76 attacchi pensati apposta contro la predizione) è in corso.
+**Tempi e immagini distrutte** (misurati a CPU libera, un processo, 13 immagini): una chiamata a tutti i detector, predizione compresa, impiega **0,36 s** in media e **0,87 s** al massimo; sulle immagini distrutte (WPSNR ≤ 25) la detection con predizione dice "presente" in 31 casi su 88, contro 30 su 88 senza. **Risultato preliminare sulla robustezza** (detection della v1.0, solo DCT, 26 immagini della metà A, batteria v3 = 680 attacchi + 76 pensati apposta contro la predizione):
+
+| τ fissa | detection attuale | con predizione |
+|---|---|---|
+| 0,10 | 69% rotte, 37,21 dB | **23% rotte, 35,93 dB** |
+| 0,11 | 85% rotte, 37,57 dB | **42% rotte, 35,98 dB** |
+
+Con la predizione le immagini rotte scendono dal 69–85% al 23–42%, e quelle che cadono lo fanno a circa 36 dB invece di 37,2–37,6. L'attacco che la mette più in difficoltà è "rumore leggero + JPEG" (il rumore rende il JPEG non più prevedibile), come ci aspettavamo.
+
+**Attenzione: questi numeri sono a τ fissa, non a parità di falsi positivi.** Il massimo su più varianti alza un po' i valori casuali, quindi con la predizione τ andrà probabilmente alzata. Il test dei falsi positivi con la predizione non è ancora stato fatto, e va fatto (insieme alla stessa prova sulla v2.0) prima di decidere qualunque cosa.
 
 **Perché non è nel codice.** (a) Il TA non ha capito la domanda e gliel'abbiamo rispiegata: aspettiamo la risposta. (b) La prima versione costava fino a 33 s per detection (mediani di scipy): l'abbiamo riscritta con le funzioni equivalenti di OpenCV (risultato identico, fino a 300 volte più veloci).
 

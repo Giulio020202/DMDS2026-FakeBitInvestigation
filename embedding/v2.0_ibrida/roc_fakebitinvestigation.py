@@ -2,19 +2,25 @@
 Capture the Mark 2026 - calcolo della soglia tau (ROC) del gruppo fakebitinvestigation
 (versione 2.0, IBRIDA DCT + wavelet: W ha 2048 valori, 1024 DCT + 1024 wavelet).
 
-Segue la procedura di p.4 del regolamento (Lab4, ROC-curves, esempio 2):
+Segue la procedura di p.4 del regolamento (Lab4, ROC-curves, esempio 2), con i controlli in piu' del Lab 4
+(H0-A, H0-B e set di test separato):
   1. embedding del nostro watermark W_original su un insieme di immagini;
   2. in un ciclo, attacchi casuali (solo quelli permessi: awgn, blur, sharpening, jpeg,
      resize, median, anche combinati o localizzati) sulle immagini watermarkate;
   3. estrazione con la stessa funzione della detection;
-  4. sim(W_extracted dalla watermarkata, W estratto dall'attaccata) -> score con label 1
+  4. sim(W_extracted dalla watermarkata, W estratto dall'attaccata) -> score con label 1 (H1)
      (e' esattamente la similarita' calcolata dalla detection);
-  5. per ogni attacco, N_RANDOM watermark casuali W_random (in forma +-1, la stessa mappatura
-     dell'embedding, messo in entrambe le parti come fa l'embedding, con l'ampiezza di ciascuna parte
-     presa da W_extracted) -> sim(W_random, W estratto dall'attaccata) con la STESSA funzione di
-     similarita' della detection (massimo sulle varianti di estrazione) -> label 0;
-  6. curva ROC (sklearn) e scelta di tau: la soglia piu' bassa con FPR <= FPR_TARGET
-     (dentro l'intervallo ammesso [0, 0.1]).
+  5. score con label 0, con la STESSA funzione di similarita' della detection (massimo sulle varianti):
+     H0-R: per ogni attacco, N_RANDOM watermark casuali W_random (in forma +-1, la stessa mappatura
+           dell'embedding, messo in entrambe le parti con l'ampiezza di ciascuna parte presa da W_extracted)
+           confrontati con il W estratto dall'attaccata (e' la procedura del regolamento);
+     H0-A: lo STESSO attacco applicato all'originale non watermarkata (Lab 4);
+     H0-B: lo STESSO attacco applicato alla stessa immagine con il watermark di un "altro gruppo"
+           (stesso schema, watermark casuale) (Lab 4);
+  6. le immagini sono divise in CALIBRAZIONE (70%) e TEST (30%, mai usate per scegliere tau);
+     sulla calibrazione: curva ROC (sklearn) e tau = la soglia piu' bassa con FPR <= FPR_TARGET
+     su CIASCUNO dei tre tipi di H0 (dentro l'intervallo ammesso [0, 0.1]);
+     sul test: tau congelata, si misurano FPR (per tipo) e TPR.
 
 Questo codice NON fa parte della detection (p.4: la soglia si calcola una volta sola, fuori).
 
@@ -26,6 +32,7 @@ import glob
 import io
 import os
 import sys
+import tempfile
 import time
 from multiprocessing import Pool
 
@@ -45,6 +52,7 @@ WATERMARK = os.path.join(HERE, "..", "fakebitinvestigation.npy")   # watermark e
 FPR_TARGET = 0.001      # FPR scelta per tau (il regolamento ammette [0, 0.1])
 N_RANDOM = 10           # watermark casuali per ogni attacco (campioni con label 0)
 SEED = 2026
+TEST_EVERY = 10          # immagini con indice % 10 >= 7 -> set di TEST (30%), le altre -> CALIBRAZIONE
 
 
 # ----------------------------------------------------------------- attacchi (lab)
@@ -92,31 +100,37 @@ def _smooth_mask(img, q):
     return sd <= np.quantile(sd, q)
 
 
-def random_attack(img, rng):
-    """Un attacco casuale tra quelli permessi (con parametri casuali)."""
+def random_attack(rng):
+    """Sceglie un attacco casuale tra quelli permessi e restituisce (funzione, nome): la stessa
+    funzione si applica a piu' immagini (watermarkata, originale, watermarkata da un altro gruppo)."""
     k = rng.integers(10)
     if k == 0:
-        return jpeg_compression(img, int(rng.integers(3, 95))), "jpeg"
+        q = int(rng.integers(3, 95)); return (lambda x: jpeg_compression(x, q)), "jpeg"
     if k == 1:
-        return awgn(img, rng.uniform(1, 30), int(rng.integers(1 << 30))), "awgn"
+        s, sd = rng.uniform(1, 30), int(rng.integers(1 << 30)); return (lambda x: awgn(x, s, sd)), "awgn"
     if k == 2:
-        return blur(img, rng.uniform(0.3, 3)), "blur"
+        s = rng.uniform(0.3, 3); return (lambda x: blur(x, s)), "blur"
     if k == 3:
-        return sharpening(img, float(rng.choice([0.5, 1, 2, 4, 10])), rng.uniform(0.2, 3)), "sharp"
+        s, a = float(rng.choice([0.5, 1, 2, 4, 10])), rng.uniform(0.2, 3); return (lambda x: sharpening(x, s, a)), "sharp"
     if k == 4:
-        return median(img, int(rng.choice([3, 5, 7, 9]))), "median"
+        m = int(rng.choice([3, 5, 7, 9])); return (lambda x: median(x, m)), "median"
     if k == 5:
-        return resizing(img, round(rng.uniform(0.2, 0.95), 2)), "resize"
+        s = round(rng.uniform(0.2, 0.95), 2); return (lambda x: resizing(x, s)), "resize"
     if k == 6:
-        return blur(awgn(img, rng.uniform(5, 30), int(rng.integers(1 << 30))), rng.uniform(0.5, 2)), "awgn+blur"
+        s, sd, b = rng.uniform(5, 30), int(rng.integers(1 << 30)), rng.uniform(0.5, 2)
+        return (lambda x: blur(awgn(x, s, sd), b)), "awgn+blur"
     if k == 7:
-        return jpeg_compression(blur(img, rng.uniform(0.3, 1.5)), int(rng.integers(3, 50))), "blur+jpeg"
-    if k == 8:   # localizzato sulle zone lisce (maschera calcolata dalla watermarkata)
-        m = _smooth_mask(img, rng.uniform(0.3, 0.7))
-        out = img.copy()
-        out[m] = jpeg_compression(img, int(rng.integers(2, 20)))[m]
-        return out, "jpeg locale"
-    return median_filter(img, size=int(rng.choice([3, 5, 7]))), "median_nd"
+        b, q = rng.uniform(0.3, 1.5), int(rng.integers(3, 50)); return (lambda x: jpeg_compression(blur(x, b), q)), "blur+jpeg"
+    if k == 8:   # localizzato sulle zone lisce (maschera calcolata dall'immagine attaccata stessa)
+        qm, q = rng.uniform(0.3, 0.7), int(rng.integers(2, 20))
+
+        def f(x):
+            m = _smooth_mask(x, qm)
+            out = x.copy()
+            out[m] = jpeg_compression(x, q)[m]
+            return out
+        return f, "jpeg locale"
+    m = int(rng.choice([3, 5, 7])); return (lambda x: median_filter(x, size=m)), "median_nd"
 
 
 # ----------------------------------------------------------------- un'immagine
@@ -125,22 +139,39 @@ def _one_image(args):
     rng = np.random.default_rng(seed)
     original = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
     watermarked = emb.embedding(path, WATERMARK)
+    # "altro gruppo": stessa immagine, stesso schema, watermark casuale (file temporaneo per embedding())
+    with tempfile.TemporaryDirectory() as tmp:
+        other_wm = os.path.join(tmp, "altro.npy")
+        np.save(other_wm, rng.integers(0, 2, emb.N_BITS))
+        other = emb.embedding(path, other_wm)
     ctx = det._context(original)
     W_ext = det._extract(ctx, watermarked)
     half = W_ext.size // 2
     # ampiezza (rms) di ciascuna parte: il watermark casuale viene messo nella stessa forma di W_ext
     amp = np.array([np.sqrt(np.mean(W_ext[:half] ** 2)), np.sqrt(np.mean(W_ext[half:] ** 2))])
-    scores, labels, wps = [], [], []
+    scores, kinds, wps = [], [], []       # kinds: 'H1', 'H0-R', 'H0-A', 'H0-B'
     for _ in range(n_att):
-        attacked, _ = random_attack(watermarked, rng)
+        f, _ = random_attack(rng)
+        attacked = f(watermarked)
         vecs = det._attacked_vectors(ctx, original, attacked)
         q = emb.wpsnr(watermarked, attacked) if not np.array_equal(watermarked, attacked) else 99.0
-        scores.append(det._score(W_ext, vecs)); labels.append(1); wps.append(q)
+        scores.append(det._score(W_ext, vecs)); kinds.append('H1'); wps.append(q)
         for _ in range(N_RANDOM):
             r = rng.choice([-1.0, 1.0], half)
             W_random = np.concatenate([amp[0] * r, amp[1] * r])
-            scores.append(det._score(W_random, vecs)); labels.append(0); wps.append(q)
-    return scores, labels, wps
+            scores.append(det._score(W_random, vecs)); kinds.append('H0-R'); wps.append(q)
+        for kind, img in (('H0-A', original), ('H0-B', other)):
+            a = f(img)
+            scores.append(det._score(W_ext, det._attacked_vectors(ctx, original, a))); kinds.append(kind)
+            wps.append(emb.wpsnr(watermarked, a))
+    return scores, kinds, wps
+
+
+def _tau(h0, fpr_target):
+    """La soglia piu' bassa con FPR <= fpr_target: sopra soglia al massimo floor(fpr_target * n) campioni H0."""
+    h0s = np.sort(h0)
+    m = int(np.floor(fpr_target * len(h0s)))
+    return float(np.nextafter(h0s[len(h0s) - m - 1], np.inf))
 
 
 def main():
@@ -149,36 +180,53 @@ def main():
     files = sorted(glob.glob(os.path.join(folder, "*.bmp")))
     t0 = time.time()
     with Pool(max(1, (os.cpu_count() or 2) - 1)) as p:
-        res = []
-        for r in p.imap_unordered(_one_image, [(f, n_att, SEED + i) for i, f in enumerate(files)], chunksize=1):
-            res.append(r)
+        res, res_idx = [], []
+        jobs = [(f, n_att, SEED + i) for i, f in enumerate(files)]
+        for i, r in enumerate(p.imap(_one_image, jobs, chunksize=1)):
+            res.append(r); res_idx.append(i)
             k = len(res)                     # barra di avanzamento (su stderr)
             el = time.time() - t0
             sys.stderr.write(f"\r[{'#' * (30 * k // len(files)):30s}] {k}/{len(files)} immagini, "
                              f"{el / 60:.1f} min, mancano ~{el / k * (len(files) - k) / 60:.1f} min ")
             sys.stderr.flush()
         sys.stderr.write("\n")
-    scores = np.concatenate([r[0] for r in res])
-    labels = np.concatenate([r[1] for r in res])
-    wps = np.concatenate([r[2] for r in res])
+    # imap_unordered non conserva l'ordine: ricostruiamo quale immagine e' di calibrazione e quale di test
+    test_set = {i for i in range(len(files)) if i % TEST_EVERY >= 7}
+    print(f"{len(files)} immagini ({len(files) - len(test_set)} calibrazione, {len(test_set)} test), {n_att} attacchi "
+          f"ciascuna, {N_RANDOM} watermark casuali per attacco, {time.time() - t0:.0f}s")
 
-    fpr, tpr, thr = roc_curve(labels, scores, drop_intermediate=False)
-    h0 = scores[labels == 0]
-    h1 = scores[labels == 1]
-    # tau = la soglia piu' bassa con FPR <= FPR_TARGET: lasciamo sopra soglia al massimo
-    # floor(FPR_TARGET * n) campioni H0, mettendo tau appena sopra il successivo.
-    h0s = np.sort(h0)
-    m = int(np.floor(FPR_TARGET * len(h0s)))
-    tau = float(np.nextafter(h0s[len(h0s) - m - 1], np.inf))
-    valid = (labels == 1) & (wps >= 35)
-    print(f"{len(files)} immagini, {n_att} attacchi ciascuna, {N_RANDOM} watermark casuali per attacco "
-          f"({len(h1)} campioni H1, {len(h0)} H0), {time.time() - t0:.0f}s")
-    print(f"AUC = {auc(fpr, tpr):.5f}")
-    print(f"H0: media {h0.mean():+.4f}, dev.std {h0.std():.4f}, quantile 99.9% {np.quantile(h0, 0.999):.4f}, max {h0.max():.4f}")
-    print(f"tau (FPR <= {FPR_TARGET}) = {tau:.4f}  ->  FPR {np.mean(h0 >= tau):.5f}, TPR {np.mean(h1 >= tau):.4f}; "
-          f"TPR sui soli attacchi con WPSNR >= 35: {np.mean(scores[valid] >= tau):.4f}")
-    for t in (0.08, 0.10, 0.12):
-        print(f"  tau={t:.2f}: FPR {np.mean(h0 >= t):.5f}, TPR {np.mean(h1 >= t):.4f}")
+    def gather(sel):
+        sc = np.concatenate([np.asarray(res[j][0]) for j in sel])
+        kd = np.concatenate([np.asarray(res[j][1]) for j in sel])
+        wp = np.concatenate([np.asarray(res[j][2]) for j in sel])
+        return sc, kd, wp
+
+    cal = [j for j in range(len(res)) if res_idx[j] not in test_set]
+    tst = [j for j in range(len(res)) if res_idx[j] in test_set]
+    sc, kd, wp = gather(cal)
+    h1 = sc[kd == 'H1']
+    taus = {k: _tau(sc[kd == k], FPR_TARGET) for k in ('H0-R', 'H0-A', 'H0-B')}
+    tau = max(taus.values())
+    labels = (kd == 'H1').astype(int)
+    fpr, tpr, thr = roc_curve(labels, sc, drop_intermediate=False)
+    print(f"CALIBRAZIONE: {len(h1)} campioni H1, H0-R {np.sum(kd == 'H0-R')}, H0-A {np.sum(kd == 'H0-A')}, "
+          f"H0-B {np.sum(kd == 'H0-B')}; AUC (H0 insieme) = {auc(fpr, tpr):.5f}")
+    for k, t in taus.items():
+        x = sc[kd == k]
+        print(f"  {k}: media {x.mean():+.4f}, dev.std {x.std():.4f}, quantile 99.9% {np.quantile(x, 0.999):.4f}, "
+              f"max {x.max():.4f} -> soglia per FPR <= {FPR_TARGET}: {t:.4f}")
+    valid = (kd == 'H1') & (wp >= 35)
+    print(f"tau = massimo delle tre = {tau:.4f}  ->  FPR H0-R {np.mean(sc[kd == 'H0-R'] >= tau):.5f}, "
+          f"H0-A {np.mean(sc[kd == 'H0-A'] >= tau):.5f}, H0-B {np.mean(sc[kd == 'H0-B'] >= tau):.5f}; "
+          f"TPR {np.mean(h1 >= tau):.4f}, TPR sui soli attacchi con WPSNR >= 35: {np.mean(sc[valid] >= tau):.4f}")
+    sc2, kd2, wp2 = gather(tst)
+    valid2 = (kd2 == 'H1') & (wp2 >= 35)
+    print(f"TEST (tau congelata {tau:.4f}): FPR H0-R {np.mean(sc2[kd2 == 'H0-R'] >= tau):.5f}, "
+          f"H0-A {np.mean(sc2[kd2 == 'H0-A'] >= tau):.5f}, H0-B {np.mean(sc2[kd2 == 'H0-B'] >= tau):.5f}; "
+          f"TPR {np.mean(sc2[kd2 == 'H1'] >= tau):.4f}, TPR sui soli attacchi con WPSNR >= 35: {np.mean(sc2[valid2] >= tau):.4f}")
+    for t in (0.08, 0.086, 0.09, 0.10):
+        print(f"  tau={t:.3f} (calibrazione): FPR H0-R {np.mean(sc[kd == 'H0-R'] >= t):.5f}, "
+              f"H0-A {np.mean(sc[kd == 'H0-A'] >= t):.5f}, H0-B {np.mean(sc[kd == 'H0-B'] >= t):.5f}, TPR {np.mean(h1 >= t):.4f}")
 
     import matplotlib
     matplotlib.use("Agg")                        # nessuna finestra: salviamo solo il file
