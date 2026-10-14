@@ -14,7 +14,7 @@ import numpy as np
 from scipy.fft import dctn, idctn
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(os.path.dirname(HERE), "v1.0"))   # versione 1.0 (DCT): costanti e WPSNR
+sys.path.insert(0, os.path.join(os.path.dirname(HERE), "v2.0_ibrida"))   # versione consegnata: costanti e WPSNR dei lab
 import embedding_fakebitinvestigation as emb  # noqa: E402
 
 N = 512

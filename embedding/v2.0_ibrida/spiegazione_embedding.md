@@ -1,4 +1,781 @@
-# Capture the Mark 2026: embedding del gruppo `fakebitinvestigation`
+# Capture the Mark 2026: la difesa del gruppo `fakebitinvestigation`
+
+**Versione 2.0 "ibrida" (DCT + wavelet): spiegazione completa di strategia, algoritmo e codice**
+
+(15/10. Il documento ha due parti. La **Parte A** spiega da zero la versione che consegniamo, la v2.0: perché esiste, come funziona, il codice funzione per funzione, quanto è robusta e perché abbiamo scartato la v1.0. La **Parte B** è il diario completo degli esperimenti delle prime due iterazioni, lasciato com'era: lì si vede da dove viene ogni scelta. Dove la Parte B è superata, la Parte A lo dice.)
+
+File di questa cartella (`embedding/v2.0_ibrida/`):
+
+- `embedding_fakebitinvestigation.py`: la funzione `embedding(input1, input2)` da consegnare;
+- `detection_fakebitinvestigation.py`: la funzione `detection(input1, input2, input3)` da consegnare;
+- `roc_fakebitinvestigation.py`: il codice che calcola la soglia τ con la ROC (procedura di p.4 del regolamento);
+- `spiegazione_embedding.md`: questo documento.
+
+Risorse condivise nella cartella superiore `embedding/`: il regolamento aggiornato (`document.pdf`), il watermark assegnato (`fakebitinvestigation.npy`), le 101 immagini di esempio (`sample-images/`), le 3 immagini della gara 2022 (`gara2022/`) e gli strumenti di misura (`esperimenti/`, da non consegnare).
+
+---
+
+# PARTE A — La versione 2.0 spiegata da zero
+
+## A0. Riassunto in 12 punti
+
+1. Il watermark è una sequenza di **1024 bit** assegnata dai TA. La trasformiamo in **±1** (0 → −1, 1 → +1).
+2. Ogni bit viene scritto su una **coppia di coefficienti vicini**: al primo aumentiamo il modulo, al secondo lo diminuiamo (o il contrario se il bit è −1). Così gli attacchi che "alzano o abbassano tutto" (blur, sharpening, resize, contrasto) non cancellano il bit.
+3. Lo **stesso** watermark viene scritto **due volte, in due "linguaggi" diversi** dell'immagine: nella **DCT globale** (1024 coppie nella banda di frequenze 32 ≤ r ≤ 128) e nella **wavelet db4** (1024 coppie nelle sottobande di dettaglio dei livelli 3 e 4, circa le stesse frequenze ma localizzate nello spazio). È la differenza rispetto alla v1.0, che usava solo la DCT.
+4. Le coppie sono quelle con i **coefficienti più grandi** dell'immagine originale: la detection (non-blind) le ritrova da sola partendo dall'originale.
+5. L'intensità del watermark viene **calibrata in automatico** per ottenere esattamente il WPSNR che vogliamo (62,05 dB di default, appena sopra la soglia dei 5 punti qualità), con il codice WPSNR dei lab.
+6. La detection estrae il watermark dalla watermarkata (W_ext, 2048 valori) e dall'attaccata (W_att), e calcola il **coseno** tra i due. Per essere più robusta prova anche a "de-stirare" l'attaccata (contro il resize dei lab) e a pesare le zone dell'immagine in base a quanto sono state danneggiate (contro gli attacchi localizzati), e tiene il **massimo**.
+7. Presente se coseno ≥ **τ = 0,086**, scelta con la ROC (procedura del regolamento) a un tasso di falsi positivi dello 0,1%. Nessun controllo sul WPSNR nella decisione: il regolamento aggiornato lo vieta.
+8. **Robustezza** (104 immagini, avversario "adattivo" che cerca l'attacco più leggero immagine per immagine usando la nostra detection, cosa che in gara non è nemmeno permessa): a 62,05 dB ci rompe il **70%** delle immagini, con attacchi in media a **37,0 dB** → fascia da **6 punti** di robustezza.
+9. A **58,05 dB** ci rompe solo il **17%** delle immagini (attacchi a 35,9 dB). Con le regole confermate dal TA (mai rotti = 6 punti + 2 di bonus; qualità sulla **media** delle 3 immagini) i **punti attesi** sono **11,10** a 58,05 dB contro **10,88** a 62,05 dB.
+10. Rispetto alla v1.0 (solo DCT) la v2.0 dà **+0,09 punti attesi** a 62 dB (intervallo di confidenza al 90%: da +0,04 a +0,16) e **+0,06** a 58 dB (pareggio statistico). Regola che ci eravamo dati: si sceglie la migliore, e in caso di pareggio la v2.0, che è anche più "nostra" rispetto allo schema del lab.
+11. Il nemico principale resta il **JPEG**, da solo o in catena con blur e mediano: 72 delle 73 immagini rotte a 62 dB cadono così.
+12. Un'idea per la detection è **in attesa di risposta dai TA**: la "predizione dell'attacco" (sottrarre il danno del JPEG simulandolo sull'originale). È misurata nella §A11.1 ma **non** è nel codice consegnato. Un'altra, la "soglia normalizzata" del Lab 4, l'abbiamo misurata e **scartata** (§A11.2).
+
+> 🗣 **In parole povere**: scriviamo lo stesso messaggio segreto due volte, con due "inchiostri" diversi, in punti dell'immagine che contano per l'occhio. Per cancellarlo un attaccante deve rovinare abbastanza l'immagine da finire nella fascia di qualità più bassa che il regolamento accetta (35–38 dB), che per noi vale comunque il punteggio massimo di robustezza.
+
+---
+
+## A1. Il gioco: cosa dice il regolamento e come si fanno i punti
+
+Il regolamento di riferimento è la versione **aggiornata** (`document.pdf`, ricevuta il 14/10), che sostituisce `1BattleRules2026.pdf`. Più le risposte del TA (Andrea Montibeller) alle nostre domande del 14/10.
+
+### A1.1 Le regole che ci riguardano
+
+| regola | cosa significa per noi |
+|---|---|
+| `embedding(input1, input2) → output1`: percorso dell'originale, percorso del watermark, immagine watermarkata | firma rispettata alla lettera; immagini lette con OpenCV |
+| l'embedding non stampa, non apre finestre | nessuna `print`, nessun file scritto |
+| `detection(input1, input2, input3) → (output1, output2)`: originale, watermarkata, attaccata → presente/assente e WPSNR(watermarkata, attaccata) | firma rispettata; le tre immagini vengono lette dentro la funzione |
+| detection in **un solo file**, nessuna funzione esterna tranne il WPSNR, nessun percorso relativo | tutto (WPSNR compreso) è copiato dentro il file |
+| **non-blind**: si confronta il watermark estratto dalla watermarkata con quello estratto dall'attaccata; vietato leggere il file del watermark o scriverlo nel codice | estraiamo W_ext dalla watermarkata usando l'originale come riferimento |
+| la detection deve **sempre** eseguire l'algoritmo; vietato forzare output1 in base al WPSNR, anche sotto i 25 dB (regola nuova) | la decisione è solo "coseno ≥ τ" (§A6.5) |
+| se l'attaccata è l'**originale**, il watermark deve risultare assente | sull'originale la nostra estrazione dà un vettore nullo o quasi; controllato su tutte le immagini (§A7.4) |
+| detection entro **5 secondi** | misurato: 2,2 s in media e 3,1 s al massimo con la CPU occupata da altri 13 processi pesanti (32 chiamate); a CPU libera è più veloce (la misura precisa la ripetiamo prima della consegna) |
+| **una sola soglia τ** per tutte le immagini, calcolata con la ROC (FPR ∈ [0; 0,1]) | τ = 0,086 a FPR 0,1% (§A7) |
+| il watermark si può inserire più volte e la similarità si può calcolare sulla concatenazione (risposta del TA) | è esattamente la v2.0: 1024 valori DCT + 1024 valori wavelet |
+| dopo il 27/10 solo "fine-tuning": parametri e posizioni di embedding | tutti i parametri sono costanti in testa ai file |
+
+### A1.2 Come si fanno i punti (difesa)
+
+| WPSNR medio dell'embedding (media delle 3 immagini) | punti qualità | | WPSNR medio degli attacchi riusciti su di noi | punti robustezza |
+|---|---|---|---|---|
+| 35–50 | 1 | | 35–38 | **6** |
+| 50–54 | 2 | | 38–41 | 5 |
+| 54–58 | 3 | | 41–44 | 4 |
+| 58–62 | 4 | | 44–47 | 3 |
+| 62–66 | 5 | | 47–50 | 2 |
+| ≥ 66 | 6 | | 50–53 | 1 |
+| | | | ≥ 53 | 0 |
+
+Due chiarimenti che ci ha dato il TA:
+
+- **la qualità si calcola sulla media del WPSNR delle 3 immagini**, non immagine per immagine;
+- **se nessuno riesce a romperci** prendiamo la robustezza piena (**6 punti**) **più il bonus di 2 punti**.
+
+Un attacco è "riuscito" solo se toglie il watermark **e** lascia l'immagine con WPSNR ≥ 35 dB rispetto alla watermarkata.
+
+> 🗣 **In parole povere**: i punti di difesa vengono da due cose che tirano in direzioni opposte. Più il watermark è leggero, più l'immagine è bella (punti qualità); più è forte, più l'attaccante deve rovinare l'immagine per toglierlo (punti robustezza). E se è così forte che nessuno ci riesce, arriva il bonus.
+
+### A1.3 Cosa ne segue per la strategia
+
+1. **Stare appena sopra il bordo di una fascia.** I punti qualità salgono a gradini di 4 dB: 62,05 dB vale come 65,9 dB, ma con molta più energia (= robustezza). Per questo calibriamo l'intensità per atterrare esattamente su 62,05 o 58,05.
+2. **La robustezza a 35–38 dB vale già il massimo.** Non serve un watermark "indistruttibile": basta che chi lo vuole togliere debba scendere sotto i 38 dB.
+3. **Il bonus da 2 punti vale più di un punto di qualità.** È il motivo per cui 58,05 dB può convenire più di 62,05 (§A8.3).
+4. **La media sulle 3 immagini apre una strategia nuova per il giorno della gara**: possiamo dare a ogni immagine un target diverso, purché la media resti sopra la soglia della fascia (§A8.4).
+
+---
+
+## A2. La strategia in una pagina
+
+**La domanda di partenza** era: uno spread spectrum "semplice" basta, o servono tecniche più sofisticate (QIM, ISS, combinazioni di trasformate, più bande)? La risposta che ci siamo dati, con i numeri delle sezioni seguenti:
+
+- **Le tecniche "più furbe" dello spread spectrum non servono nel nostro caso.** QIM, STDM e ISS (Improved Spread Spectrum) esistono per eliminare il "rumore" che l'immagine stessa crea quando la detection **non** ha l'originale (detection blind). La nostra detection è **non-blind**: sottraiamo l'originale e quel rumore sparisce del tutto. In più la QIM è fragile proprio agli attacchi che cambiano il "volume" dei coefficienti (blur, sharpening, contrasto), mentre il nostro schema a coppie è immune per costruzione.
+- **Quello che conta davvero sono tre cose**: *dove* mettere l'energia (quali frequenze e quali coefficienti), *quanta* (il target di WPSNR) e *come* leggerla (la detection). Su tutte e tre abbiamo fatto esperimenti.
+- **Una sola "torta" di energia.** Il WPSNR fissa quanta energia possiamo mettere in totale. Dividerla tra più bande o più trasformate non la fa crescere: aiuta solo se gli attacchi colpiscono le parti in modo diverso. Lo abbiamo misurato: aggiungere una copia in alta frequenza, dividere in due bande DCT o usare la wavelet ad alta frequenza **peggiora** (§A10); DCT + wavelet sulle stesse frequenze medie invece **migliora un poco** (§A9). È la v2.0.
+- **La detection pesa quanto l'embedding.** Il salto più grande della seconda iterazione è venuto dalla detection (risincronizzazione del resize e pesatura spaziale): dal 94% al 78% di immagini rotte a parità di falsi positivi (Parte B, §11.4).
+- **Ogni miglioramento va confrontato a parità di falsi positivi.** Una detection che vede il watermark ovunque "resiste" a tutti gli attacchi ma prende penalità. Per questo ogni confronto di questo documento è fatto con soglie scelte allo stesso tasso di falsi positivi (0,1%).
+
+> 🗣 **In parole povere**: non abbiamo cercato l'algoritmo più complicato, ma quello che, a parità di "pulizia" dell'immagine, costringe l'attaccante a sporcarla di più. E ogni volta che qualcosa sembrava migliorare, abbiamo controllato che non fosse solo una detection "più credulona".
+
+---
+
+## A3. Il punto chiave: come il WPSNR "pesa" le frequenze
+
+Il WPSNR dei lab (lo stesso usato in gara, confermato) non misura l'errore pixel per pixel: prima lo **filtra** con un filtro CSF (*Contrast Sensitivity Function*, 41×41) che imita la sensibilità dell'occhio alle diverse frequenze, poi calcola un PSNR. Abbiamo misurato quanto "conta" ogni frequenza, usando lo stesso raggio r della DCT (frequenza = r/1024 cicli per pixel):
+
+| r (indice DCT) | 8 | 16 | 32 | 64 | 96 | 128 | 160 | 200 | 256 | 320 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| cicli/pixel | 0,008 | 0,016 | 0,031 | 0,062 | 0,094 | 0,125 | 0,156 | 0,195 | 0,250 | 0,312 |
+| guadagno del filtro CSF | 0,501 | 0,505 | 0,517 | 0,549 | 0,561 | 0,525 | 0,439 | 0,294 | 0,111 | 0,020 |
+| costo relativo dell'energia (r = 64 → 1) | 0,83 | 0,85 | 0,89 | 1,00 | 1,04 | 0,91 | 0,64 | 0,29 | 0,04 | ≈ 0 |
+
+Due conseguenze, una buona e una cattiva:
+
+- **Fino a r ≈ 128 il costo è quasi costante**: possiamo scegliere la banda per la robustezza, non per il WPSNR.
+- **Sopra r ≈ 200 l'energia è quasi gratis**: a r = 256 un'ampiezza 5 volte più grande costa lo stesso WPSNR. Sembra un regalo, ma **lo stesso regalo lo riceve l'attaccante**: blur, mediano e JPEG cancellano proprio quelle frequenze, e anche a lui costa quasi zero. Lo abbiamo verificato (§A10.1): mettere una copia del watermark lassù **peggiora** sempre.
+
+> 🗣 **In parole povere**: il WPSNR è un giudice che guarda bene i dettagli medi dell'immagine e quasi non vede la grana finissima. Se nascondiamo il watermark nella grana finissima il giudice non lo vede, ma l'attaccante può spazzarla via e il giudice non vede neanche quello. Bisogna nascondersi dove il giudice guarda, e dove "pulire" costa caro.
+
+---
+
+## A4. L'algoritmo di embedding, passo per passo
+
+### A4.1 I quattro ingredienti
+
+**1. Watermark bipolare.** `w = 2·bit − 1`, quindi 0 → −1 e 1 → +1. Con ±1 due watermark indipendenti hanno similarità coseno con media 0 (e deviazione standard 1/√N). Con 0/1 sarebbe circa 0,5: due watermark qualsiasi sembrerebbero "mezzi uguali" e la soglia sarebbe molto più delicata (dimostrazione e misure nella Parte B, §4.2).
+
+**2. Coppie differenziali.** Ogni bit va su due coefficienti vicini C₁ e C₂ (vicini in frequenza nella DCT, vicini nello spazio dentro la stessa sottobanda nella wavelet):
+
+- modulo di C₁ → |C₁| + a·w
+- modulo di C₂ → |C₂| − a·w
+
+In estrazione si guarda la **differenza** delle variazioni relative dei due. Un attacco "liscio" (blur, sharpening, resize, contrasto) moltiplica due coefficienti vicini per quasi lo stesso fattore g: nella differenza il fattore si cancella e resta g·a·w, e il coseno non dipende da g. Lo schema del lab (Cox moltiplicativo) invece a 60 dB veniva rotto in 9 immagini su 9 da attacchi di questo tipo (Parte B, §6.2).
+
+**3. Selezione dei coefficienti.** In ciascun dominio prendiamo le 1024 coppie con il **minimo dei due moduli più grande** dentro la banda scelta. Coefficienti grandi significano tre cose: divisioni stabili in estrazione, componenti "importanti" per l'immagine (che un attaccante non può cancellare senza rovinarla) e posizioni che dipendono **solo dall'originale**, che la detection ha.
+
+**4. Ampiezza uniforme calibrata.** Tutte le coppie ricevono la stessa spinta assoluta (è la scelta ottima per il rumore additivo, Parte B §4.4). L'ampiezza viene trovata con una ricerca automatica (bisezione) in modo che il WPSNR finale sia ≥ TARGET_WPSNR, con il codice esatto dei lab.
+
+### A4.2 Le due parti: DCT globale e wavelet
+
+**Parte 1, DCT globale** (identica alla v1.0). Trasformata DCT dell'intera immagine 512×512. Le coppie sono (u,v) e (u,v+1) con v pari, nella banda radiale 32 ≤ r ≤ 128 con r = √(u² + (v+½)²). In termini spaziali sono strutture con periodo tra 8 e 32 pixel. Ogni coefficiente DCT globale "parla" di tutta l'immagine: un bit è spalmato su tutti i 262.144 pixel.
+
+**Parte 2, wavelet db4.** Trasformata wavelet ortogonale (Daubechies 4, 4 livelli, modalità "periodization", che conserva l'energia come la DCT). Usiamo le sottobande di dettaglio (orizzontale, verticale, diagonale) dei **livelli 3 e 4**: il livello 3 copre circa 0,06–0,125 cicli/pixel, il livello 4 circa 0,03–0,06, cioè **le stesse frequenze della parte DCT**. La differenza è che i coefficienti wavelet sono **localizzati**: ognuno descrive una piccola zona dell'immagine. Le coppie sono due coefficienti orizzontalmente adiacenti (colonne j e j+1, con j pari) nella stessa sottobanda.
+
+**Perché le due insieme.** Le due parti stanno nella stessa banda di frequenze (quella che il WPSNR "paga" in modo uniforme e che gli attacchi non riescono a pulire gratis), ma "vedono" l'immagine in modo diverso: la DCT globale media su tutta l'immagine, la wavelet zona per zona. L'idea è che un attacco localizzato o "a blocchi" (come il JPEG) non danneggi le due parti allo stesso modo. Il vantaggio misurato c'è ma è piccolo (§A9): lo diciamo subito per non vendere la v2.0 come una rivoluzione. Lo stesso watermark scritto in entrambi i domini viene letto dalla detection come un unico vettore di 2048 valori.
+
+> 🗣 **In parole povere**: è come scrivere la stessa frase su un muro con una vernice che si stende su tutta la parete (DCT) e con tanti piccoli adesivi sparsi (wavelet). Per cancellarla devi riverniciare tutto o staccare quasi tutti gli adesivi.
+
+### A4.3 La formula completa
+
+Notazione: O = originale, P_DCT e P_DWT = "pattern" del watermark nei pixel ad ampiezza 1 (cioè l'immagine che si ottiene mettendo +sgn(C₁)·w sul primo coefficiente di ogni coppia, −sgn(C₂)·w sul secondo, zero altrove, e tornando ai pixel con la trasformata inversa).
+
+Immagine watermarkata:
+
+`I_w = clip(rint(O + s·(K_DCT·P_DCT + K_DWT·P_DWT)), 0, 255)`
+
+- `K_DCT = K_DWT = 1`: le due parti hanno la stessa ampiezza relativa;
+- `s` è la scala, trovata con la bisezione: la più grande che tiene WPSNR(O, I_w) ≥ 62,05 dB.
+
+Misure sulle 104 immagini (101 di esempio + 3 della gara 2022): `s` tra **3,01 e 3,16** (mediana 3,08), WPSNR ottenuto sempre tra **62,0500 e 62,0538 dB**. Per confronto, la v1.0 (solo DCT) arrivava a un'ampiezza tra 4,14 e 4,32: nella v2.0 la stessa energia è divisa su due domini.
+
+> 🗣 **In parole povere**: calcoliamo "il disegno" del watermark nell'immagine, poi lo sommiamo all'originale con un volume che alziamo finché il giudice (il WPSNR) non dice "basta, sopra 62,05 no".
+
+### A4.4 Estrazione (la usa solo la detection)
+
+Per ogni coppia, dati il coefficiente originale C e quello dell'immagine da analizzare X:
+
+`W_i = [ s₁·(X₁ − C₁)/|C₁| − s₂·(X₂ − C₂)/|C₂| ] / ( 1/|C₁| + 1/|C₂| )`
+
+con s₁, s₂ i segni dei coefficienti originali (e |C| sostituito da max(|C|, 1) per non dividere mai per zero). Proprietà (dimostrate nella Parte B, §5.4, e valide identiche per la parte wavelet):
+
+- sulla **watermarkata** dà `W_i = a·w_i`: il watermark esatto, a meno di una scala;
+- sull'**originale** dà `W_i = 0` esatto;
+- se un attacco moltiplica entrambi i coefficienti per g, dà `g·a·w_i`: il coseno non cambia.
+
+Il vettore completo è `W = [W_DCT (1024 valori), W_DWT (1024 valori)]`.
+
+---
+
+## A5. Il codice dell'embedding, funzione per funzione
+
+File: `embedding_fakebitinvestigation.py`. Lo leggiamo dall'alto in basso.
+
+### A5.1 I parametri
+
+```python
+TARGET_WPSNR = 62.05   # dB: appena sopra la soglia 62 della tabella punti (5 punti)
+R_MIN = 32.0           # banda radiale dei coefficienti DCT (come la v1.0)
+R_MAX = 128.0
+N_BITS = 1024          # lunghezza del watermark assegnato
+WAVELET = "db4"        # wavelet della seconda parte
+DWT_LEVELS = 4         # livelli della decomposizione
+DWT_USE = (3, 4)       # livelli le cui sottobande di dettaglio ospitano il watermark
+K_DCT = 1.0            # ampiezza relativa della parte DCT
+K_DWT = 1.0            # ampiezza relativa della parte wavelet
+AMP_MIN, AMP_MAX = 0.2, 40.0   # intervallo di ricerca della scala
+N_ITER = 14                    # passi di bisezione
+```
+
+Sono **le uniche cose che si possono toccare dopo il 27/10** ("fine-tuning: parametri e posizioni di embedding"). Quelli che descrivono *dove* sta il watermark (R_MIN, R_MAX, WAVELET, DWT_LEVELS, DWT_USE, N_BITS) vanno tenuti **identici** nella detection; TARGET_WPSNR, K_DCT e K_DWT riguardano solo l'embedding.
+
+> 🗣 **In parole povere**: è il "pannello di controllo". TARGET_WPSNR è la manopola del volume; gli altri dicono in quali "stanze" dell'immagine nascondere il watermark.
+
+### A5.2 Il WPSNR dei lab
+
+Le funzioni `_csffun`, `_csfmat`, `_get_csf_filter` e `wpsnr` sono **copiate identiche** dal codice dei lab. Servono perché la calibrazione deve usare esattamente il numero che calcoleranno i TA. `wpsnr(a, b)`:
+
+1. porta le immagini in [0, 1];
+2. calcola l'errore A − B;
+3. lo filtra con il filtro CSF 41×41 (`convolve2d`, bordi "wrap");
+4. restituisce `20·log10(1/√(media dell'errore filtrato²))`.
+
+### A5.3 La parte DCT: `_dct2`, `_idct2`, `_select_pairs`
+
+```python
+def _dct2(x):
+    return dctn(x, norm='ortho')
+```
+
+DCT bidimensionale "ortonormale": conserva l'energia (la somma dei quadrati dei coefficienti è uguale a quella dei pixel). È la stessa trasformata dei lab, scritta in una riga. `_idct2` è l'inversa.
+
+```python
+def _select_pairs(coeffs):
+    H, W = coeffs.shape
+    u = np.arange(H)[:, None]
+    v = np.arange(0, W - 1, 2)[None, :]          # v pari: coppie (u,v),(u,v+1)
+    uu = np.broadcast_to(u, (H, v.shape[1])).ravel()
+    vv = np.broadcast_to(v, (H, v.shape[1])).ravel()
+    r = np.sqrt(uu**2 + (vv + 0.5)**2)          # frequenza "radiale" della coppia
+    band = (r >= R_MIN) & (r <= R_MAX)
+    uu, vv = uu[band], vv[band]
+    strength = np.minimum(np.abs(coeffs[uu, vv]), np.abs(coeffs[uu, vv + 1]))
+    best = np.argsort(-strength, kind='stable')[:N_BITS]
+    best = np.sort(best)
+    return uu[best], vv[best]
+```
+
+Riga per riga:
+
+- costruisce **tutte** le coppie possibili (u, v)–(u, v+1) con v pari;
+- calcola la loro frequenza r (il "+½" mette r a metà tra i due coefficienti) e tiene solo quelle nella banda 32–128;
+- per ogni coppia, la "forza" è il **più piccolo** dei due moduli: vogliamo che **entrambi** i coefficienti siano grandi;
+- prende le 1024 più forti (`argsort` decrescente, "stable" per avere sempre lo stesso ordine a parità di valore);
+- le **riordina per posizione**: così l'abbinamento bit → coppia non dipende da differenze minuscole di arrotondamento.
+
+> 🗣 **In parole povere**: tra tutte le "coppie di note" dell'immagine nella fascia di frequenze giusta, scegliamo le 1024 suonate più forte, e le mettiamo in ordine di posizione, come i posti di un teatro.
+
+### A5.4 La parte wavelet: `_dwt2`, `_idwt2`, `_select_pairs_dwt`
+
+```python
+def _dwt2(x):
+    arr, slices = pywt.coeffs_to_array(pywt.wavedec2(x, WAVELET, mode='periodization', level=DWT_LEVELS))
+    return arr, slices
+```
+
+`wavedec2` scompone l'immagine in 4 livelli: un'approssimazione grossolana (32×32) e, per ogni livello, tre sottobande di dettaglio (orizzontale, verticale, diagonale), di 32×32 al livello 4, 64×64 al livello 3, 128×128 al livello 2 e 256×256 al livello 1. `coeffs_to_array` le mette tutte in **un'unica matrice 512×512**, più `slices`, che dice dove sta ogni sottobanda. Lavorare su una matrice sola rende la selezione delle coppie identica, nel concetto, a quella della DCT. `_idwt2` fa il percorso inverso.
+
+```python
+def _select_pairs_dwt(arr, slices):
+    m = np.zeros(arr.shape, bool)
+    for lev in DWT_USE:
+        k = DWT_LEVELS - lev + 1           # in wavedec2 l'indice 1 e' il livello piu' grossolano
+        for key in ('ad', 'da', 'dd'):
+            m[slices[k][key]] = True
+    ii, jj = np.nonzero(m[:, :-1] & m[:, 1:])
+    keep = jj % 2 == 0
+    ii, jj = ii[keep], jj[keep]
+    strength = np.minimum(np.abs(arr[ii, jj]), np.abs(arr[ii, jj + 1]))
+    best = np.sort(np.argsort(-strength, kind='stable')[:N_BITS])
+    return ii[best], jj[best]
+```
+
+- `m` è una "maschera" che segna i coefficienti delle sottobande di dettaglio (`'ad'`, `'da'`, `'dd'` = orizzontale, verticale, diagonale) dei livelli 3 e 4;
+- una coppia è (i, j)–(i, j+1) con **entrambi** i coefficienti dentro la maschera e j pari (coppie che non si sovrappongono);
+- poi stessa regola della DCT: le 1024 coppie con il minimo dei due moduli più grande, riordinate per posizione.
+
+### A5.5 Il "disegno" del watermark: `_pair_pattern`
+
+```python
+def _pair_pattern(c, ii, jj, w):
+    s1 = np.where(c[ii, jj] < 0, -1.0, 1.0)
+    s2 = np.where(c[ii, jj + 1] < 0, -1.0, 1.0)
+    P = np.zeros_like(c)
+    P[ii, jj] = s1 * w
+    P[ii, jj + 1] = -s2 * w
+    return P
+```
+
+Crea una matrice di coefficienti tutta a zero tranne le coppie scelte: sul primo coefficiente mette `+segno(C₁)·w`, sul secondo `−segno(C₂)·w`. Moltiplicare per il segno del coefficiente originale fa sì che il **modulo** del primo cresca di w e quello del secondo cali di w, qualunque sia il segno. Questa matrice, riportata nei pixel con la trasformata inversa, è il "disegno" del watermark ad ampiezza 1. Funziona per entrambi i domini: le funzioni di selezione restituiscono righe e colonne, e qui non importa se vengono dalla DCT o dalla wavelet.
+
+### A5.6 La funzione `embedding`
+
+```python
+def embedding(input1, input2):
+    original = cv2.imread(input1, cv2.IMREAD_GRAYSCALE)
+    bits = np.load(input2).astype(np.float64).ravel()[:N_BITS]
+    w = 2.0 * bits - 1.0                          # 0/1 -> -1/+1
+    o = original.astype(np.float64)
+
+    c = _dct2(o)
+    uu, vv = _select_pairs(c)
+    arr, slices = _dwt2(o)
+    ii, jj = _select_pairs_dwt(arr, slices)
+    pattern = K_DCT * _idct2(_pair_pattern(c, uu, vv, w)) + K_DWT * _idwt2(_pair_pattern(arr, ii, jj, w), slices)
+
+    def marked(s):
+        return np.clip(np.rint(o + s * pattern), 0, 255).astype(np.uint8)
+
+    lo, hi = AMP_MIN, AMP_MAX
+    best = marked(lo)
+    for _ in range(N_ITER):
+        mid = np.sqrt(lo * hi)
+        candidate = marked(mid)
+        if wpsnr(original, candidate) >= TARGET_WPSNR:
+            lo, best = mid, candidate
+        else:
+            hi = mid
+
+    output1 = best
+    return output1
+```
+
+Passo per passo:
+
+1. **legge** l'originale in grigi con OpenCV e il watermark dal file `.npy` (1024 bit), poi lo trasforma in ±1;
+2. calcola le due trasformate dell'originale e **sceglie le coppie** in ciascuna;
+3. costruisce il **disegno complessivo** del watermark nei pixel: disegno DCT + disegno wavelet (le trasformate sono lineari, quindi si possono sommare nei pixel);
+4. `marked(s)` produce l'immagine watermarkata con scala `s`: somma, arrotonda a interi, taglia in [0, 255];
+5. **bisezione logaritmica**: si parte dall'intervallo [0,2; 40]; a ogni passo si prova la media geometrica; se il WPSNR è ancora ≥ 62,05 la scala va bene e si prova più in alto, altrimenti più in basso. Dopo 14 passi la precisione è di circa lo 0,03% sulla scala;
+6. restituisce l'**ultima immagine valida**, cioè quella con la scala più grande che rispetta il target. Il WPSNR viene calcolato sull'immagine **già arrotondata**, quindi è esattamente il numero che calcoleranno i TA.
+
+> 🗣 **In parole povere**: prepariamo il disegno del watermark e poi cerchiamo il volume giusto come si cerca una parola nel dizionario: apri a metà, guardi se sei troppo avanti o troppo indietro, e dimezzi ogni volta. In 14 tentativi troviamo il volume massimo che non supera il limite di qualità.
+
+**Tempo**: tra 22 e 31 secondi per immagine, misurati con la CPU occupata da altri processi (la v1.0 impiegava 10–12 s a CPU libera: la v2.0 calcola anche la wavelet a ogni passo). La parte lenta è il WPSNR dei lab (convoluzione 41×41), calcolato 14 volte.
+
+---
+
+## A6. Il codice della detection, funzione per funzione
+
+File: `detection_fakebitinvestigation.py`. È un **file unico**: contiene di nuovo il WPSNR dei lab e le stesse funzioni di selezione dell'embedding, copiate identiche (non importate, come vuole il regolamento).
+
+### A6.1 Le costanti
+
+```python
+R_MIN = 32.0
+R_MAX = 128.0
+N_BITS = 1024
+WAVELET = "db4"
+DWT_LEVELS = 4
+DWT_USE = (3, 4)
+TAU = 0,086
+SQ_WIN = 16                     # finestra (pixel) della pesatura spaziale
+SQ_EPS = 0.5                    # regolarizzazione della pesatura spaziale
+STRETCH = (510, 511, 513, 514)  # dimensioni intermedie del resize dei lab da compensare
+C_FLOOR = 1.0                   # minimo |coefficiente| al denominatore dell'estrazione
+```
+
+Le prime sei devono essere **identiche** all'embedding (altrimenti la detection cercherebbe il watermark nei posti sbagliati). TAU è la soglia della ROC (§A7). Le altre regolano le varianti di estrazione (§A6.4).
+
+### A6.2 L'estrazione: `_pair_extract`, `_context`, `_extract`
+
+```python
+def _pair_extract(c0, ii, jj, c1):
+    a1, a2 = c0[ii, jj], c0[ii, jj + 1]
+    s1 = np.where(a1 < 0, -1.0, 1.0)
+    s2 = np.where(a2 < 0, -1.0, 1.0)
+    m1 = np.maximum(np.abs(a1), C_FLOOR)
+    m2 = np.maximum(np.abs(a2), C_FLOOR)
+    r1 = s1 * (c1[ii, jj] - a1) / m1
+    r2 = s2 * (c1[ii, jj + 1] - a2) / m2
+    return (r1 - r2) / (1.0 / m1 + 1.0 / m2)
+```
+
+È la formula della §A4.4:
+
+- `c0` sono i coefficienti dell'**originale**, `c1` quelli dell'immagine da analizzare;
+- `r1` e `r2` sono le variazioni relative di modulo dei due coefficienti della coppia (`s·(X − C)/|C|`);
+- la differenza `r1 − r2` cancella i guadagni comuni (blur, sharpening, ...);
+- la divisione finale fa sì che sulla watermarkata il risultato sia esattamente `a·w`;
+- `C_FLOOR = 1`: se un coefficiente originale fosse quasi zero (immagini costanti o sfumature sintetiche) non dividiamo per zero. Sulle foto vere non cambia nulla, perché i coefficienti scelti sono grandi (nella parte DCT il più piccolo vale circa 13 su tutte le 104 immagini).
+
+```python
+def _context(original):
+    o = original.astype(np.float64)
+    c0 = _dct2(o)
+    uu, vv = _select_pairs(c0)
+    a0, slices = _dwt2(o)
+    ii, jj = _select_pairs_dwt(a0, slices)
+    return c0, uu, vv, a0, ii, jj
+
+def _extract(ctx, img):
+    c0, uu, vv, a0, ii, jj = ctx
+    x = np.asarray(img, dtype=np.float64)
+    return np.concatenate([_pair_extract(c0, uu, vv, _dct2(x)), _pair_extract(a0, ii, jj, _dwt2(x)[0])])
+```
+
+- `_context` calcola **una volta sola** tutto quello che dipende solo dall'originale: trasformate e posizioni delle coppie, per entrambe le parti;
+- `_extract` trasforma un'immagine qualsiasi e restituisce il vettore di **2048 valori**: prima i 1024 della DCT, poi i 1024 della wavelet.
+
+> 🗣 **In parole povere**: l'originale fa da "stampo". Appoggiamo l'immagine sopra lo stampo e misuriamo, coppia per coppia, chi dei due coefficienti è cresciuto rispetto all'altro. Quella lista di 2048 misure è il watermark "letto".
+
+### A6.3 La similarità: `_similarity`
+
+```python
+def _similarity(x, y):
+    nx, ny = np.linalg.norm(x), np.linalg.norm(y)
+    if nx == 0 or ny == 0:
+        return 0.0
+    return float(np.dot(x, y) / (nx * ny))
+```
+
+Il **coseno** tra i due vettori: vale 1 se sono identici a meno di una scala, circa 0 se non c'entrano niente, −1 se sono opposti. Se uno dei due è nullo (per esempio l'attaccata è l'originale e l'estrazione dà zero), per definizione la similarità è 0: watermark assente.
+
+> 🗣 **In parole povere**: il coseno misura quanto due liste di numeri "vanno nella stessa direzione", senza badare a quanto sono grandi. Se l'attaccante ha indebolito il watermark ma non l'ha distrutto, la direzione resta quella giusta.
+
+### A6.4 Le varianti di estrazione: `_destretch`, `_attacked_vectors`, `_score`
+
+Dall'attaccata non estraiamo un solo vettore, ma **sei**:
+
+```python
+def _attacked_vectors(ctx, original, attacked):
+    o = original.astype(np.float64)
+    a = attacked.astype(np.float64)
+    vecs = [_extract(ctx, a)]                       # 1. normale
+    for m in STRETCH:                               # 2-5. "de-stirata"
+        vecs.append(_extract(ctx, _destretch(attacked, m)))
+    d = a - o                                       # 6. pesata nello spazio
+    rho = 1.0 / (uniform_filter(d * d, SQ_WIN) + SQ_EPS)
+    vecs.append(_extract(ctx, o + rho * d))
+    return vecs
+
+def _score(reference, vecs):
+    return max(_similarity(reference, y) for y in vecs)
+```
+
+**Varianti 2–5, "de-stirare".** La funzione di resize dei lab rimpicciolisce e poi ingrandisce l'immagine; per alcune scale l'immagine intermedia esce di 510, 511, 513 o 514 pixel invece di 512, e il risultato finale è **stirato** di qualche millesimo. Uno stiramento così piccolo non si vede, ma sposta le frequenze e "desincronizza" le coppie. `_destretch` applica lo stiramento inverso (con `cv2.remap`) per ciascuna delle 4 dimensioni possibili. Misurato (Parte B, §11.4): resize del lab a scala 0,55 → similarità da 0,225 a 0,831.
+
+**Variante 6, pesatura spaziale.** Un attacco localizzato (per esempio JPEG fortissimo solo sulle zone lisce) distrugge il watermark in una parte dell'immagine e lascia intatto il resto. Nell'estrazione normale la parte distrutta "inquina" tutto. Allora pesiamo ogni pixel della differenza `attaccata − originale` con
+
+`ρ = 1 / (media su 16×16 pixel di (attaccata − originale)² + 0,5)`
+
+Dove l'attacco non ha toccato nulla la differenza è piccola (c'è solo il watermark) → peso alto; dove l'attacco ha devastato → peso basso. Il peso usa **solo attaccata e originale**, mai la watermarkata: così, se l'attaccata non contiene il nostro watermark, il peso non può "inventarlo". Con la watermarkata al posto dell'originale i falsi positivi erano del 30–87% (Parte B, §11.4).
+
+**Il massimo.** La similarità finale è il **massimo** dei sei coseni: l'attaccante deve battere tutte le varianti insieme. Il prezzo è che, su immagini senza il nostro watermark, il massimo di sei valori casuali è un po' più alto di uno solo: per questo τ va calcolata con la **stessa** funzione `_score` (§A7).
+
+> 🗣 **In parole povere**: invece di leggere l'immagine attaccata una volta sola, la leggiamo sei volte: così com'è, "raddrizzata" in quattro modi diversi (se qualcuno l'ha stirata) e con una lente che ignora le zone rovinate. Se in almeno una lettura il messaggio si vede chiaro, è presente.
+
+### A6.5 La funzione `detection`
+
+```python
+def detection(input1, input2, input3):
+    original = cv2.imread(input1, cv2.IMREAD_GRAYSCALE)
+    watermarked = cv2.imread(input2, cv2.IMREAD_GRAYSCALE)
+    attacked = cv2.imread(input3, cv2.IMREAD_GRAYSCALE)
+
+    ctx = _context(original)
+    W_ext = _extract(ctx, watermarked)
+    sim = _score(W_ext, _attacked_vectors(ctx, original, attacked))
+
+    output2 = wpsnr(watermarked, attacked)
+    output1 = 1 if sim >= TAU else 0
+    return output1, output2
+```
+
+1. legge le **tre immagini dentro la funzione** dai tre percorsi (regola esplicita);
+2. prepara lo "stampo" dall'originale;
+3. estrae `W_ext` dalla **watermarkata**: è il watermark come l'abbiamo inserito, **ricavato** e non letto da file (regola: "don't read the original watermark: extract it");
+4. calcola la similarità con le sei varianti dell'attaccata;
+5. `output2` = WPSNR tra watermarkata e attaccata, con il codice dei lab;
+6. `output1` = 1 se la similarità è ≥ τ, altrimenti 0.
+
+**Perché non c'è più il controllo sul WPSNR.** Fino al 13/10 la riga era `output1 = 1 if (sim >= TAU and output2 > 25) else 0`: sotto i 25 dB rispondevamo "assente" a prescindere. Il regolamento aggiornato lo vieta esplicitamente ("an if statement that skips detection or forces output1 based on the WPSNR is not allowed, including for severely degraded images"). Lo abbiamo tolto. La conseguenza misurata è nella §A7.5.
+
+> 🗣 **In parole povere**: la detection fa sempre il suo lavoro fino in fondo e risponde solo in base a quello che vede. Il WPSNR lo calcola e lo restituisce, ma non lo usa per decidere.
+
+---
+
+## A7. La soglia τ: ROC e controlli
+
+### A7.1 Il problema
+
+τ è l'asticella: sopra "presente", sotto "assente". Più è bassa, più siamo robusti (un watermark indebolito viene ancora riconosciuto), ma più rischiamo di "vedere" il nostro watermark dove non c'è, e questo dà **penalità** (immagini non watermarkate, immagini di altri gruppi). Il regolamento chiede **una sola τ** per tutte le immagini, scelta con una curva ROC a un tasso di falsi positivi (FPR) tra 0 e 0,1.
+
+### A7.2 La procedura (p.4 del regolamento), come la facciamo in `roc_fakebitinvestigation.py`
+
+1. embedding del nostro watermark sulle 101 immagini di esempio;
+2. per ogni immagine, 40 **attacchi casuali** tra quelli permessi (JPEG, AWGN, blur, sharpening, mediano, resize, combinazioni e attacchi localizzati);
+3. per ogni attacco: `sim(W_ext, W_att)` con **la stessa funzione `_score` della detection** → etichetta 1 (watermark presente);
+4. per ogni attacco, 10 watermark **casuali** ±1, messi nella stessa forma di W_ext (lo stesso ±1 nella parte DCT e nella parte wavelet, con l'ampiezza di ciascuna parte presa da W_ext) → `sim(W_random, W_att)` → etichetta 0;
+5. curva ROC con `sklearn` e τ = la soglia più bassa con FPR ≤ 0,1%.
+
+Risultato per la v2.0: 
+
+| | valore |
+|---|---|
+| campioni | 4.040 H1 (watermark presente), 40.400 H0 (watermark casuali) |
+| AUC | **0,99899** (v1.0: 0,99891) |
+| H0 | media +0,022, deviazione standard 0,016, quantile 99,9% **0,0830**, massimo 0,121 |
+| τ con FPR ≤ 0,1% | **0,0830** (FPR 0,099%, TPR 98,6%; TPR 99,7% sui soli attacchi con WPSNR ≥ 35) |
+| FPR a τ = 0,08 / 0,10 / 0,12 | 0,144% / 0,005% / 0,002% |
+
+La ROC è salvata in `roc_fakebitinvestigation.png`.
+
+> 🗣 **In parole povere**: facciamo migliaia di prove in cui sappiamo la risposta giusta ("c'è" oppure "non c'è") e mettiamo l'asticella dove, tra tutte le prove "non c'è", la supera meno di una su mille.
+
+### A7.3 Il controllo in più: falsi positivi "realistici"
+
+La ROC del regolamento usa watermark casuali, ma in gara i casi pericolosi sono altri. Per questo li misuriamo a parte (`esperimenti/h0_multi.py`, 104 immagini):
+
+| caso | n | media | quantile 99,9% | massimo |
+|---|---|---|---|---|
+| stessa immagine con il watermark di un **altro gruppo** (stesso schema) + attacco casuale | 4.105 | +0,026 | 0,091 | 0,097 |
+| **originale** non watermarkata + attacco casuale | 4.111 | +0,025 | 0,080 | 0,085 |
+| **originale esatta** | 104 | +0,022 | 0,074 | 0,075 |
+
+Il quantile 99,9% dei due casi realistici insieme dà **τ = 0,0851**: è la soglia con cui abbiamo fatto tutti i confronti di robustezza della v2.0 (§A8), e coincide quasi con quella dei watermark casuali (0,0831–0,0832 nelle prove della batteria).
+
+### A7.4 Il valore finale e il controllo sull'originale
+
+Prima di scrivere τ nella detection abbiamo controllato tre cose (falsi positivi realistici dalla §A7.3, robustezza dalla batteria fissa sulle 104 immagini):
+
+| τ candidata | FPR realistica | originale esatta "presente" | batteria fissa: rotte, WPSNR medio |
+|---|---|---|---|
+| 0,0830 (ROC ufficiale) | 0,146% ✘ (sopra lo 0,1%) | 0/104 | 70%, 36,94 dB |
+| 0,0851 | 0,110% ✘ | 0/104 | 75%, 36,92 dB |
+| **0,086 (scelta)** | **0,073%** ✔ | **0/104** (massimo 0,075, margine 0,011) | **76%, 36,95 dB** |
+| 0,09 | 0,061% | 0/104 | 80%, 37,03 dB |
+
+Scegliamo **τ = 0,086**: è la più bassa per cui **sia** la ROC del regolamento **sia** i falsi positivi realistici stanno sotto lo 0,1%, e l'originale non attaccata risulta sempre "assente". È lo stesso criterio usato per la v1.0 (ROC 0,108, nel file 0,11). Per confronto, la v1.0 con la sua τ = 0,11 ha FPR realistica 0,049% e con la batteria fissa viene rotta nel 78% dei casi, a 37,20 dB.
+
+> 🗣 **In parole povere**: la ROC ufficiale diceva 0,083, ma con i casi "difficili" (immagini di altri gruppi, originale attaccata) a 0,083 sbaglieremmo un po' più di una volta su mille. Alzando di poco l'asticella torniamo sotto l'uno su mille, e l'originale resta sempre sotto con un margine.
+
+### A7.5 Immagini distrutte (WPSNR ≤ 25 dB)
+
+Il regolamento penalizza chi trova il watermark in immagini "distrutte", ma ora vieta di usare il WPSNR per decidere. Abbiamo misurato cosa fa la detection v2.0 da sola su 13 immagini, con attacchi che portano il WPSNR sotto i 25 dB:
+
+| attacco distruttivo | "presente" |
+|---|---|
+| immagine nera, bianca, negativo | 0/39 |
+| rumore AWGN σ = 120 | 1/13 |
+| blur σ = 8 | 0/4 |
+| mediano 21, resize 0,1 | 0/6 |
+| **sharpening estremo** (σ 10 α 3; σ 4 α 8) | **23/25** |
+| rumore AWGN σ = 80 (unico caso sotto i 25 dB) | 0/1 |
+| totale | 24/88 |
+
+(La v1.0 faceva 30/88: in più trovava il watermark anche nel blur σ = 8, 4/4.)
+
+Lo sharpening estremo **amplifica** le frequenze medie, dove sta il nostro watermark: il watermark c'è davvero, anzi è più forte. Abbiamo deciso di lasciare la detection così: lo scopo della regola nuova è proprio che la detection non rifiuti un watermark presente per una questione di WPSNR.
+
+---
+
+## A8. Quanto siamo robusti, e quanti punti ci aspettiamo
+
+### A8.1 Due tipi di avversario
+
+Abbiamo misurato la robustezza contro due avversari, sulle stesse **104 immagini** (101 di esempio + 3 della gara 2022), sempre con la soglia scelta a FPR 0,1%:
+
+1. **Batteria fissa** (`esperimenti/battery.py`, 680 attacchi per immagine): tutti gli attacchi permessi, singoli e in catena, globali e localizzati, con parametri su una griglia fissa. Somiglia a un avversario "in regola", che sceglie gli attacchi guardando solo la watermarkata.
+2. **Attaccante adattivo** (`esperimenti/adaptive.py`): per ogni immagine cerca l'attacco **più leggero** che toglie il watermark. Per 13 famiglie di attacchi (JPEG, blur, rumore, mediano, resize e le catene più pericolose) scorre la forza dal più leggero al più forte e poi la raffina con una bisezione. Poi prova anche ad **attaccare solo le zone che servono**, restituendo all'immagine i blocchi 64×64 e 32×32 che non sono necessari. Usa la nostra detection come "oracolo" (in media circa 700 chiamate per immagine): con le regole aggiornate un avversario **non** può farlo (vietato usare l'originale per regolare o localizzare un attacco), quindi è un **caso peggiore**.
+
+> 🗣 **In parole povere**: la batteria fissa è un mazzo di chiavi sempre uguale. L'attaccante adattivo è uno scassinatore che prova, ascolta la serratura e lima la chiave. Se reggiamo contro lo scassinatore, reggiamo a maggior ragione contro chi ha solo il mazzo di chiavi.
+
+Una precisazione sulle soglie: i confronti tra le versioni (batteria fissa e attaccante adattivo) li abbiamo fatti con la soglia "realistica" di ciascuna (v2.0 0,0851, v1.0 0,1045), cioè a parità di falsi positivi. La τ finale scritta nella detection è un po' più alta per prudenza (v2.0 0,086, v1.0 0,11, §A7.4): con la batteria fissa, alla τ finale la v2.0 viene rotta in 1 immagine in più su 104 (76% invece di 75%), mentre la v1.0 passa dal 72% al 78%.
+
+### A8.2 I risultati (target 62,05 dB)
+
+| avversario | v2.0: rotte | v2.0: WPSNR medio attacchi riusciti | v1.0: rotte | v1.0: WPSNR medio |
+|---|---|---|---|---|
+| batteria fissa (τ realistiche: v2.0 0,0851, v1.0 0,1045) | 75% | 36,92 | 72% | 37,10 |
+| adattivo, solo attacchi globali | 70% | 36,76 | 73% | 37,00 |
+| adattivo + attacchi a zone | **70%** | **37,01** | 73% | 37,24 |
+
+Lettura:
+
+- **Siamo sempre nella fascia 35–38 dB**, cioè 6 punti di robustezza: per toglierci il watermark l'attaccante deve rovinare l'immagine quasi fino al limite che il regolamento accetta.
+- **L'attaccante adattivo non fa molto meglio della batteria fissa.** Temevamo che la batteria fosse ottimista; non lo è: cercare il parametro esatto immagine per immagine guadagna pochi decimi di dB.
+- **Gli attacchi a zone aggiungono circa +0,25 dB** e sono comunque vietati dal regolamento aggiornato.
+- **Il nemico è il JPEG.** Attacco che rompe ogni immagine (v2.0, adattivo, 73 immagini rotte): JPEG + blur 0,8 → 21; blur 0,6 + JPEG → 12; mediano 3 + JPEG → 11; rumore leggero + JPEG → 11; blur 1,0 + JPEG → 8; resize 0,5 + JPEG → 5; JPEG da solo → 4; rumore + blur → 1.
+
+### A8.3 I punti attesi, e perché 58 dB può convenire più di 62
+
+Simulazione (`esperimenti/adapt_points.py`): estraiamo a caso 3 immagini dalle 104 (20.000 volte), per ognuna prendiamo il miglior attacco riuscito trovato dall'attaccante adattivo, e applichiamo le regole: qualità sulla media del WPSNR, robustezza sul WPSNR medio degli attacchi riusciti, **6 + 2** se nessuna delle 3 viene rotta.
+
+| target | rotte (adattivo) | WPSNR medio attacchi riusciti | punti qualità | **punti attesi totali** |
+|---|---|---|---|---|
+| **62,05 dB** | 70% | 37,01 | 5 | **10,88** |
+| **58,05 dB** | 17% | 35,92 | 4 | **11,10** |
+| (v1.0, 62,05 dB) | 73% | 37,24 | 5 | 10,79 |
+| (v1.0, 58,05 dB) | 18% | 35,94 | 4 | 11,04 |
+
+Perché scendendo di 4 dB si guadagna, anche se si perde un punto di qualità:
+
+- a 62 dB veniamo rotti spesso (70% delle immagini): la probabilità che **nessuna** delle 3 venga rotta è bassissima, quindi il bonus quasi non arriva mai;
+- a 58 dB il watermark ha circa 1,6 volte l'ampiezza e veniamo rotti solo nel 17% dei casi: il bonus da 2 punti arriva spesso, e in media vale più del punto di qualità perso.
+
+**Attenzione**: il bonus richiede che **nessun gruppo** ci rompa. Con 10–15 gruppi che provano, la probabilità reale di non essere rotti è più bassa di quella simulata con un solo avversario (anche se fortissimo). Il vantaggio di 58 dB (+0,22 punti) va quindi preso come indicativo.
+
+> 🗣 **In parole povere**: rinunciamo a un punto sicuro (la qualità) per giocarci due punti (il bonus) con buone probabilità. Conviene se le probabilità sono davvero buone, e a 58 dB lo sono.
+
+### A8.4 La strategia per il giorno della gara
+
+Il target **non** si sceglie una volta per tutte: è un parametro di fine-tuning (ammesso anche il giorno della gara, purché corretto in embedding e detection prima dell'upload) e i punti qualità si calcolano sulla **media** delle 3 immagini. Il piano:
+
+1. scaricate le 3 immagini, facciamo l'embedding a più target (per esempio 58,05 e 62,05) su ciascuna;
+2. lanciamo contro ciascuna versione la batteria fissa (veloce) e, se c'è tempo, l'attaccante adattivo solo globale;
+3. per ogni immagine guardiamo quanto è difficile da rompere: le immagini "facili da difendere" (testurizzate) reggono anche a target alti, quelle "difficili" (molte zone piatte, Parte B §11.7) vanno messe più in basso;
+4. scegliamo la combinazione di target che massimizza i punti attesi, ricordando che conta la **media**: per esempio, se vogliamo 5 punti qualità basta che la media dei 3 WPSNR sia ≥ 62, quindi un'immagine difficile può stare più in basso se un'altra sta più in alto. Questa combinazione non l'abbiamo ancora simulata: lo faremo con le immagini vere;
+5. τ non cambia con il target (dipende dai falsi positivi, che non dipendono dalla forza del watermark), ma lo ricontrolliamo sull'originale delle 3 immagini vere prima dell'upload.
+
+---
+
+## A9. Perché abbiamo scartato la versione 1.0
+
+La v1.0 è lo schema della Parte B: le stesse coppie differenziali, ma **solo nella DCT globale**. Era (ed è ancora) una buona versione: non è stata scartata perché "non funziona", ma perché la v2.0 è almeno pari e un po' migliore.
+
+| confronto (104 immagini, ciascuna versione alla sua τ a FPR 0,1%) | v1.0 | v2.0 |
+|---|---|---|
+| batteria fissa, τ realistiche | 72% rotte, 37,10 dB | 75% rotte, 36,92 dB |
+| batteria fissa, τ dai watermark casuali | 78% rotte, 37,20 dB | 71% rotte, 36,93 dB |
+| attaccante adattivo, 62,05 dB | 73% rotte, 37,24 dB | **70% rotte, 37,01 dB** |
+| attaccante adattivo, 58,05 dB | 18% rotte, 35,94 dB | **17% rotte, 35,92 dB** |
+| **punti attesi a 62,05 dB** | 10,79 | **10,88** (differenza +0,09, intervallo 90% da +0,04 a +0,16) |
+| **punti attesi a 58,05 dB** | 11,04 | **11,10** (differenza +0,06, intervallo 90% da −0,20 a +0,27) |
+| originale esatta: similarità massima / τ | 0,073 / 0,11 | 0,075 / 0,086 |
+
+Cosa dicono questi numeri:
+
+- con l'avversario più forte e più realistico per la gara (l'adattivo) la v2.0 viene rotta un po' meno spesso e a WPSNR un po' più basso, a entrambi i target;
+- a 62 dB il vantaggio in punti attesi è piccolo ma **misurabile** (l'intervallo di confidenza è tutto sopra zero); a 58 dB è un **pareggio**;
+- con la sola batteria fissa le due versioni si equivalgono (a seconda della soglia vince l'una o l'altra, sempre dentro il rumore statistico);
+- la v1.0 ha più margine sull'originale; la v2.0 lo ha comunque positivo con la sua τ (§A7.4).
+
+La regola che ci eravamo dati prima di vedere i risultati era: si sceglie la migliore; in caso di pareggio si sceglie la v2.0, perché è più "nostra" (combina due domini con le coppie differenziali invece di riprendere lo spread spectrum del lab con delle modifiche). Con i numeri sopra la v2.0 è migliore a 62 dB e pari a 58 dB: **v2.0**.
+
+> 🗣 **In parole povere**: le due versioni sono quasi gemelle; la nuova vince di poco ai punti. Non è una rivoluzione, ed è giusto dirlo: il grosso del lavoro (coppie differenziali, banda, detection) è comune alle due.
+
+---
+
+## A10. Le altre idee che abbiamo provato e scartato
+
+Tutte misurate a 62,05 dB, con la stessa detection, **a parità di falsi positivi**.
+
+### A10.1 Terza iterazione (14/10): più bande, più trasformate
+
+| variante (metà A delle immagini, batteria fissa) | rotte | WPSNR medio | esito |
+|---|---|---|---|
+| DCT 32–128 (= v1.0) | 83% | 37,3 | riferimento |
+| + copia del watermark in alta frequenza (r 200–320), ampiezza ×3 | 88% | 38,0 | **peggio** (5 punti invece di 6) |
+| + copia in alta frequenza, ampiezza ×6 | 92% | 38,9 | **peggio** |
+| due bande DCT (8–56 e 56–140), ciascuna con tutto il watermark | 81% | 37,9 | **peggio** (a un passo dai 38 dB) |
+| **DCT 32–128 + wavelet livelli 3–4** | **71%** | **37,0** | **adottata (v2.0)** |
+| DCT 32–128 + wavelet livello 2 (alte frequenze), ampiezza ×3 | 96% | 38,6 | **peggio** |
+
+Perché l'alta frequenza peggiora sempre: costa poco a noi (§A3) ma costa poco anche all'attaccante, e intanto l'energia spostata lassù indebolisce la parte nelle frequenze medie (con la copia ×3 l'ampiezza della parte DCT scende da 3,66 a 2,77 su un'immagine di prova).
+
+Perché due bande DCT non aiutano: le due bande reagiscono quasi allo stesso modo al JPEG, che è l'attacco che ci rompe; dividere l'energia non cambia niente e la banda bassa (8–56) è più esposta al "blocking" del JPEG (Parte B, §4.5).
+
+### A10.2 Prime due iterazioni (riassunto, dettagli nella Parte B)
+
+| idea | esito | dove |
+|---|---|---|
+| schema del lab (Cox moltiplicativo) | rotto 9/9 a 60 dB, attacchi a 42 dB | B §6.2 |
+| moltiplicativo a coppie | rotto 7/9, 42 dB | B §4.4 |
+| altre bande DCT (16–96, 24–128, 32–96, 48–160) | differenze dentro il rumore | B §11.6 |
+| DCT a blocchi 64×64 e 32×32 | stessa robustezza, più sensibile ai resize | B §4.5 |
+| 2 coppie per bit (2048 coppie nella stessa banda) | nessun miglioramento | B §4.6 |
+| maschera spaziale verso le texture (γ = 0,5 e 1) | sembrava meglio a τ fissa, ma 5 volte più falsi positivi: peggio a parità di FPR | B §11.6 |
+| forza modulata dal CSF, maschera NVF | nessun miglioramento | B §4 |
+| Barni et al. 2001 (DWT livello 1 + maschera HVS, anche nel Lab 4) | rotto 17/17, attacchi a 48,7 dB: troppo in alta frequenza | B §4 |
+| DCT 8×8 sui coefficienti (1,3),(3,5) | rotto 16/17, 42,7 dB | B §4 |
+| pesatura spaziale calcolata con la watermarkata | 30–87% di falsi positivi: **scartata** | B §11.4 |
+
+> 🗣 **In parole povere**: abbiamo provato quasi tutto quello che si trova nelle slide e nei lab, più qualche idea nostra. Quasi tutto pareggia o peggiora: lo schema che usiamo è il risultato di una selezione, non della prima idea che ci è venuta.
+
+---
+
+## A11. Idee per la detection misurate ma NON nel codice consegnato
+
+### A11.1 Predizione dell'attacco nella detection
+
+**L'idea.** Il JPEG è deterministico: comprimendo l'**originale** con la stessa qualità, il "rumore" che il JPEG introduce sull'immagine è quasi lo stesso dell'attaccata. La detection potrebbe:
+
+1. provare a comprimere l'originale con qualità 1–100 (e qualche catena con blur e mediano) e tenere la versione più simile all'attaccata, usando **solo originale e attaccata**;
+2. sottrarla dall'attaccata: il rumore del JPEG si cancella e resta quasi solo il watermark;
+3. estrarre W_att da quello che resta e tenere il massimo con le varianti attuali.
+
+**Le misure.** Con l'attacco noto esattamente, un JPEG a qualità 5 (≈ 36 dB) passa da similarità 0,06–0,16 a 0,25–0,40. Con l'attacco stimato (versione veloce, `esperimenti/predict.py`): mediano 5 da 0,27–0,32 a 0,83–0,91; JPEG 4 da 0,09–0,13 a 0,30–0,31; mediano 3 + JPEG 6 da 0,11 a 0,27–0,31. Attacchi pensati apposta per ingannarla (rumore prima del JPEG, doppio JPEG, parametri fuori griglia) riducono il guadagno; per questo la detection terrebbe sempre il massimo con le varianti attuali.
+
+**Tempi e immagini distrutte** (misurati a CPU libera, un processo, 13 immagini): una chiamata a tutti i detector, predizione compresa, impiega **0,36 s** in media e **0,87 s** al massimo; sulle immagini distrutte (WPSNR ≤ 25) la detection con predizione dice "presente" in 31 casi su 88, contro 30 su 88 senza. Il confronto completo a parità di falsi positivi (batteria con 76 attacchi pensati apposta contro la predizione) è in corso.
+
+**Perché non è nel codice.** (a) Il TA non ha capito la domanda e gliel'abbiamo rispiegata: aspettiamo la risposta. (b) La prima versione costava fino a 33 s per detection (mediani di scipy): l'abbiamo riscritta con le funzioni equivalenti di OpenCV (risultato identico, fino a 300 volte più veloci).
+
+> 🗣 **In parole povere**: è come riconoscere una voce in una stanza rumorosa. Se sai esattamente che rumore c'è, perché puoi riprodurlo, lo togli e la voce si sente di nuovo.
+
+### A11.2 Soglia normalizzata (dal Lab 4)
+
+**L'idea.** Invece di "presente se coseno ≥ τ", usare "presente se coseno / σ ≥ τ", dove σ = √(Σ(xᵢ·yᵢ)²)/(‖x‖·‖y‖) è quanto ci si aspetta che il coseno "balli" per caso **su quella immagine**. Una sola τ per tutte, sul punteggio normalizzato.
+
+**Le misure** (104 immagini, batteria fissa, ciascuna soglia al quantile 99,9% dei falsi positivi realistici):
+
+| | coseno (detection attuale) | punteggio normalizzato |
+|---|---|---|
+| v1.0 | 72% rotte, 37,10 dB (τ 0,1045) | 71% rotte, 37,10 dB (τ 3,34) |
+| v2.0 | 75% rotte, 36,92 dB (τ 0,0851) | 76% rotte, 36,94 dB (τ 3,82) |
+
+La differenza è di **una sola immagine** su 104, in un verso o nell'altro (test del segno p = 1,00). L'unico effetto è un margine più largo sull'originale, ma il coseno ce l'ha già positivo. **Scartata**: non vale la complessità in più (e una domanda in più ai TA).
+
+> 🗣 **In parole povere**: era un'idea elegante (un'asticella che si adatta a quanto è "rumorosa" ogni immagine), ma nei fatti la nostra similarità è già abbastanza stabile tra un'immagine e l'altra, e non cambia niente.
+
+---
+
+## A12. Conformità al regolamento: checklist
+
+| controllo | esito |
+|---|---|
+| firma `embedding(input1, input2)` e `detection(input1, input2, input3)` | ✔ |
+| immagini lette con OpenCV dentro le funzioni, dai percorsi ricevuti | ✔ |
+| nessuna stampa, nessuna finestra, nessun file scritto (embedding e detection) | ✔ verificato catturando stdout e stderr |
+| detection in un file unico, senza import di file nostri né percorsi relativi | ✔ (usa solo librerie: numpy, scipy, opencv, pywt) |
+| watermark mai letto né scritto nella detection: W_ext viene estratto dalla watermarkata | ✔ |
+| originale come attaccata → assente | ✔ similarità massima 0,075 sulle 104 immagini, τ = 0,086 |
+| watermarkata come attaccata → presente | ✔ similarità 1 |
+| nessuna decisione basata sul WPSNR (regolamento aggiornato) | ✔ `output1 = 1 if sim >= TAU else 0` |
+| detection < 5 s | ✔ 2,2 s in media e 3,1 s al massimo con la CPU occupata da altri 13 processi pesanti (32 chiamate); a CPU libera è più veloce (la misura precisa la ripetiamo prima della consegna) |
+| una sola τ, calcolata con la ROC fuori dalla detection | ✔ `roc_fakebitinvestigation.py` |
+| ripetere il watermark e confrontare la concatenazione | ✔ ammesso dal TA |
+| parametri di fine-tuning raccolti in costanti in testa ai file | ✔ |
+
+---
+
+## A13. Come si usa
+
+Dalla cartella `embedding/v2.0_ibrida/`, con l'ambiente Python del progetto attivo (`source ../../OFF_MDS_ENV/bin/activate`):
+
+```bash
+# embedding di un'immagine e salvataggio con il nome richiesto dal regolamento
+python -c "import cv2; from embedding_fakebitinvestigation import embedding, wpsnr; \
+o = cv2.imread('../sample-images/0000.bmp', 0); \
+wm = embedding('../sample-images/0000.bmp', '../fakebitinvestigation.npy'); \
+cv2.imwrite('fakebitinvestigation_0000.bmp', wm); print('WPSNR', wpsnr(o, wm))"
+
+# detection: originale, watermarkata, attaccata -> (presente?, WPSNR)
+python -c "from detection_fakebitinvestigation import detection; \
+print(detection('../sample-images/0000.bmp', 'fakebitinvestigation_0000.bmp', 'fakebitinvestigation_0000.bmp'))"
+
+# ROC e soglia (101 immagini)
+python roc_fakebitinvestigation.py
+```
+
+Per cambiare il target (fine-tuning): modificare `TARGET_WPSNR` nell'embedding. Non serve toccare la detection (τ non dipende dal target).
+
+---
+
+## A14. Glossario
+
+- **WPSNR**: misura di qualità tra due immagini, in dB; più è alta più le immagini sono simili. Quella dei lab pesa l'errore con un filtro che imita l'occhio (CSF).
+- **DCT globale**: trasformata che descrive l'immagine come somma di "onde" a varie frequenze; ogni coefficiente riguarda tutta l'immagine.
+- **Wavelet (db4)**: trasformata che descrive l'immagine per frequenze **e** per zone; ogni coefficiente riguarda una piccola zona.
+- **Coefficiente**: uno dei numeri della trasformata.
+- **Coppia differenziale**: due coefficienti vicini su cui scriviamo un bit con spinte opposte.
+- **Non-blind**: la detection ha anche l'originale.
+- **Coseno (similarità)**: quanto due vettori puntano nella stessa direzione; 1 = uguali, 0 = scorrelati.
+- **τ (tau)**: la soglia sopra cui diciamo "presente".
+- **FPR**: tasso di falsi positivi, cioè la frazione di casi senza il nostro watermark in cui diremmo "presente".
+- **ROC**: curva che mostra, al variare di τ, quanti veri positivi otteniamo per ogni livello di falsi positivi.
+- **H0 / H1**: le due ipotesi "watermark assente" / "watermark presente".
+- **Bisezione**: ricerca che dimezza ogni volta l'intervallo; serve a trovare l'ampiezza giusta.
+- **Attaccante adattivo**: il nostro avversario simulato che cerca l'attacco più leggero immagine per immagine.
+- **Punti attesi**: la media dei punti che prenderemmo su tante gare simulate.
+
+---
+
+# PARTE B — Diario degli esperimenti delle prime due iterazioni (v0.1–v1.0)
+
+(Questa parte è il documento della versione 1.0, scritto il 12–13/10 e corretto il 14/10, riportato **senza tagli**. Racconta da dove vengono le scelte comuni alle due versioni: coppie differenziali, banda 32–128, ampiezza calibrata, detection con risincronizzazione e pesatura spaziale, ROC. I riferimenti ai file sono quelli della cartella `v1.0`, che non esiste più: il codice è nella storia di git. Dove i numeri o le regole sono superati vale la Parte A: in particolare il regolamento di riferimento ora è `document.pdf` e la detection non ha più il controllo sul WPSNR.)
+
+## B. Capture the Mark 2026: embedding del gruppo `fakebitinvestigation`
 
 **Bozza v0.2: come funziona il nostro embedding e perché abbiamo fatto ogni scelta**
 
