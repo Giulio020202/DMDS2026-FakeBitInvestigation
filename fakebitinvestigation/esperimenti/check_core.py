@@ -1,7 +1,7 @@
 """Verifica che gli strumenti degli esperimenti diano gli stessi numeri del codice consegnato (v2.0 ibrida):
 - WPSNR veloce (core.wpsnr_fast) = WPSNR dei lab;
 - embedding di multi.py ('dct_dwt34') = embedding_fakebitinvestigation.embedding, bit per bit.
-Uso (da embedding/): python esperimenti/check_core.py"""
+Uso (da fakebitinvestigation/): python esperimenti/check_core.py"""
 import os, sys, time
 import cv2, numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

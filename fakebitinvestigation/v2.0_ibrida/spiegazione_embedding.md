@@ -4,18 +4,18 @@
 
 (15/10, aggiornato il 19/10 con la ROC completa, τ = 0,087, le risposte dei TA, gli attacchi e la demo. Il documento ha due parti. La **Parte A** spiega da zero la versione che consegniamo, la v2.0: perché esiste, come funziona, il codice funzione per funzione, quanto è robusta e perché abbiamo scartato la v1.0. La **Parte B** è il diario completo degli esperimenti delle prime due iterazioni, lasciato com'era: lì si vede da dove viene ogni scelta. Dove la Parte B è superata, la Parte A lo dice.)
 
-File di questa cartella (`embedding/v2.0_ibrida/`):
+File di questa cartella (`fakebitinvestigation/v2.0_ibrida/`):
 
 - `embedding_fakebitinvestigation.py`: la funzione `embedding(input1, input2)` da consegnare;
 - `detection_fakebitinvestigation.py`: la funzione `detection(input1, input2, input3)` da consegnare;
 - `roc_fakebitinvestigation.py`: il codice che calcola la soglia τ con la ROC (procedura di p.4 del regolamento); `roc_fakebitinvestigation.png` e `roc_fakebitinvestigation_output.txt` sono la curva e i numeri della run completa;
 - `attacks_fakebitinvestigation.py`: i nostri attacchi, `attacks(input1, attack_name, param_array)` (§A13);
-- `gara_fakebitinvestigation.py`: lo script per la fase di attacco della gara (§A13);
+- `attacchi_fakebitinvestigation.py`: lo script per la fase di attacco della gara (§A13);
 - `demo_fakebitinvestigation.py`: la demo che mostra come si usa ogni file;
 - `README.md`: istruzioni per eseguire tutto (per i TA);
 - `spiegazione_embedding.md`: questo documento.
 
-Risorse condivise nella cartella superiore `embedding/`: il regolamento aggiornato (`document.pdf`), il watermark assegnato (`fakebitinvestigation.npy`), le 101 immagini di esempio (`sample-images/`), le 3 immagini della gara 2022 (`gara2022/`) e gli strumenti di misura (`esperimenti/`, da non consegnare).
+Risorse condivise nella cartella superiore `fakebitinvestigation/`: il regolamento aggiornato (`document.pdf`), il watermark assegnato (`fakebitinvestigation.npy`), le 101 immagini di esempio (`sample-images/`), le 3 immagini della gara 2022 (`gara2022/`) e gli strumenti di misura (`esperimenti/`, da non consegnare).
 
 ---
 
@@ -759,7 +759,7 @@ Le istruzioni complete per eseguire tutto (anche per i TA) sono in `README.md`. 
 
 ```bash
 python demo_fakebitinvestigation.py          # embedding + detection + 11 attacchi d'esempio (~15 s)
-python demo_fakebitinvestigation.py --gara   # + lo script di gara contro la nostra detection (~6 min)
+python demo_fakebitinvestigation.py --attacchi   # + lo script di attacco contro la nostra detection (~6 min)
 ```
 
 **Gli attacchi** (`attacks_fakebitinvestigation.py`). La funzione `attacks(input1, attack_name, param_array, mask=None)` applica:
@@ -769,7 +769,7 @@ python demo_fakebitinvestigation.py --gara   # + lo script di gara contro la nos
 
 Le maschere (zone lisce, zone testurizzate, bordi, blocchi 8×8 allineati al JPEG) sono calcolate **solo dalla watermarkata**.
 
-**Lo script di gara** (`gara_fakebitinvestigation.py`). Nella fase di attacco, per ogni immagine di ogni gruppo cerca l'attacco **più leggero** che toglie il watermark, cioè quello con il WPSNR più alto, che vale più punti:
+**Lo script di attacco** (`attacchi_fakebitinvestigation.py`). Nella fase di attacco, per ogni immagine di ogni gruppo cerca l'attacco **più leggero** che toglie il watermark, cioè quello con il WPSNR più alto, che vale più punti:
 1. 25 famiglie di attacchi (singoli e catene, le stesse che contro di noi sono risultate più efficaci, §A8.2), ognuna con un parametro di forza dal più leggero al più forte;
 2. un WPSNR veloce (FFT, identico a quello dei lab: verificato) scarta senza chiamare la detection tutto ciò che va sotto i 35 dB;
 3. la detection del gruppo attaccato fa da "oracolo" (ammesso dai TA). Una ricerca binaria trova la forza minima che rompe, poi un raffinamento: circa 8 chiamate per famiglia;
@@ -781,7 +781,7 @@ Prova contro la nostra stessa detection (immagine 0000 a 62,05 dB, τ 0,087): ro
 
 > 🗣 **In parole povere**: in difesa abbiamo imparato quali attacchi fanno più male a uno schema come il nostro. In attacco li usiamo contro gli altri, e chiediamo alla loro stessa detection quanto possiamo andarci piano.
 
-Per lanciare i singoli file a mano, dalla cartella `embedding/v2.0_ibrida/` con l'ambiente Python del progetto attivo (`source ../../OFF_MDS_ENV/bin/activate`):
+Per lanciare i singoli file a mano, dalla cartella `fakebitinvestigation/v2.0_ibrida/` con l'ambiente Python del progetto attivo (`source ../../OFF_MDS_ENV/bin/activate`):
 
 ```bash
 # embedding di un'immagine e salvataggio con il nome richiesto dal regolamento

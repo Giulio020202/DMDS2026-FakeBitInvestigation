@@ -18,5 +18,5 @@ for c in base dct_dwt34; do for s in A B; do $PY esperimenti/multi.py $c --subse
 $PY esperimenti/h0_multi.py base 40
 $PY esperimenti/h0_multi.py dct_dwt34 40
 echo "### 3) ROC v2.0"
-(cd v2.0_ibrida && ../$PY roc_fakebitinvestigation.py)   # PY e' relativo a embedding/
+(cd v2.0_ibrida && ../$PY roc_fakebitinvestigation.py)   # PY e' relativo a fakebitinvestigation/
 echo CODA4 FINITA

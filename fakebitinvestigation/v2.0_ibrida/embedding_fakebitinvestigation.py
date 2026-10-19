@@ -21,6 +21,8 @@ Regole rispettate (document.pdf, regolamento aggiornato):
   - il "fine-tuning" consentito dopo il 27/10 riguarda solo parametri e
     posizioni di embedding: sono tutti nelle costanti qui sotto.
 """
+import os
+
 import cv2
 import numpy as np
 import pywt
@@ -31,6 +33,9 @@ from scipy.signal import convolve2d
 # PARAMETRI (gli unici da toccare nel fine-tuning; vanno copiati identici nella detection)
 # ----------------------------------------------------------------------------
 TARGET_WPSNR = 62.05   # dB: appena sopra la soglia 62 della tabella punti (5 punti)
+TARGET_BY_IMAGE = {}   # target diverso per singola immagine, es. {"buildings": 58.05}: nome del file senza
+                       # estensione -> dB. Vuoto = TARGET_WPSNR per tutte. Si riempie il giorno della gara
+                       # (difesa_fakebitinvestigation.py), cosi' il codice riproduce esattamente le immagini caricate.
 R_MIN = 32.0           # banda radiale dei coefficienti DCT (come la v1.0)
 R_MAX = 128.0
 N_BITS = 1024          # lunghezza del watermark assegnato
@@ -171,6 +176,7 @@ def embedding(input1, input2):
     bits = np.load(input2).astype(np.float64).ravel()[:N_BITS]
     w = 2.0 * bits - 1.0                          # 0/1 -> -1/+1
     o = original.astype(np.float64)
+    target = TARGET_BY_IMAGE.get(os.path.splitext(os.path.basename(input1))[0], TARGET_WPSNR)
 
     c = _dct2(o)
     uu, vv = _select_pairs(c)
@@ -188,7 +194,7 @@ def embedding(input1, input2):
     for _ in range(N_ITER):
         mid = np.sqrt(lo * hi)
         candidate = marked(mid)
-        if wpsnr(original, candidate) >= TARGET_WPSNR:
+        if wpsnr(original, candidate) >= target:
             lo, best = mid, candidate
         else:
             hi = mid

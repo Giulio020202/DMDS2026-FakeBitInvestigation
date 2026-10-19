@@ -5,11 +5,11 @@ Mostra come si usa ogni file consegnato:
   1. embedding_fakebitinvestigation.py   embedding(originale, watermark) -> watermarkata
   2. detection_fakebitinvestigation.py   detection(originale, watermarkata, attaccata) -> (presente?, WPSNR)
   3. attacks_fakebitinvestigation.py     attacks(watermarkata, nome, parametri) -> attaccata
-  4. gara_fakebitinvestigation.py        ricerca automatica dell'attacco piu' leggero (con --gara)
+  4. attacchi_fakebitinvestigation.py        ricerca automatica dell'attacco piu' leggero (con --attacchi)
   5. roc_fakebitinvestigation.py         ROC e soglia tau (con --roc, versione veloce)
 
 Uso (da v2.0_ibrida/):
-  python demo_fakebitinvestigation.py [--image FILE.bmp] [--watermark FILE.npy] [--out DIR] [--gara] [--roc]
+  python demo_fakebitinvestigation.py [--image FILE.bmp] [--watermark FILE.npy] [--out DIR] [--attacchi] [--roc]
 Default: ../sample-images/0000.bmp, ../fakebitinvestigation.npy, cartella ./demo_output
 """
 import argparse
@@ -50,7 +50,7 @@ def main():
     ap.add_argument("--image", default=os.path.join(HERE, "..", "sample-images", "0000.bmp"))
     ap.add_argument("--watermark", default=os.path.join(HERE, "..", "fakebitinvestigation.npy"))
     ap.add_argument("--out", default=os.path.join(HERE, "demo_output"))
-    ap.add_argument("--gara", action="store_true", help="prova anche lo script di gara contro la nostra detection")
+    ap.add_argument("--attacchi", action="store_true", help="prova anche lo script di attacco contro la nostra detection")
     ap.add_argument("--roc", action="store_true", help="lancia anche la ROC veloce (--quick)")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
@@ -96,17 +96,17 @@ def main():
         cv2.imwrite(p_att, att)
         run(describe(names, params, mname), p_att)
 
-    # ---------------------------------------------------------------- 4. gara (facoltativo)
-    if a.gara:
-        print("\n=== 4. SCRIPT DI GARA contro la nostra detection (come se fossimo un altro gruppo 'demo') ===")
-        g = os.path.join(a.out, "gara")
+    # ---------------------------------------------------------------- 4. attacchi (facoltativo)
+    if a.attacchi:
+        print("\n=== 4. SCRIPT DI ATTACCO contro la nostra detection (come se fossimo un altro gruppo 'demo') ===")
+        g = os.path.join(a.out, "attacchi")
         for sub in ("img", "orig", "det", "out"):
             os.makedirs(os.path.join(g, sub), exist_ok=True)
         shutil.copy(p_wm, os.path.join(g, "img", f"demo_{name}.bmp"))
         shutil.copy(a.image, os.path.join(g, "orig", f"{name}.bmp"))
         shutil.copy(os.path.join(HERE, "detection_fakebitinvestigation.py"), os.path.join(g, "det", "detection_demo.py"))
         sys.stdout.flush()
-        subprocess.run([sys.executable, os.path.join(HERE, "gara_fakebitinvestigation.py"),
+        subprocess.run([sys.executable, os.path.join(HERE, "attacchi_fakebitinvestigation.py"),
                         "--images", os.path.join(g, "img"), "--originals", os.path.join(g, "orig"),
                         "--detections", os.path.join(g, "det"), "--out", os.path.join(g, "out"),
                         "--procs", "1", "--budget", "300"], check=True)

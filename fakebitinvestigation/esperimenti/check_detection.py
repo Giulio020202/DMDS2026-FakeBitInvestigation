@@ -1,7 +1,7 @@
 """Controlli di conformita' di detection_fakebitinvestigation.py della versione consegnata (v2.0 ibrida),
 regolamento aggiornato p.5 e p.8: originale -> 0, watermarkata -> 1, nessuna stampa, tempo, e stesse decisioni
 degli esperimenti (multi.py, coseno concatenato sulle varianti).
-Uso (da embedding/): python esperimenti/check_detection.py"""
+Uso (da fakebitinvestigation/): python esperimenti/check_detection.py"""
 import contextlib, io, os, sys, tempfile, time
 import cv2, numpy as np
 

@@ -2,7 +2,7 @@
 Fa girare la batteria v2 su un insieme di immagini e salva, per ogni attacco,
 WPSNR(watermarked, attaccata) e la similarita' di ciascun detector.
 
-Uso (da embedding/):
+Uso (da fakebitinvestigation/):
   python esperimenti/run_battery.py --tag base --target 62.05 [--rmin 32 --rmax 128] [--procs 12]
 Output: esperimenti/risultati/<tag>.pkl  = lista di dict
   {img, family, attack, wpsnr, sim: {detector: valore}}

@@ -179,9 +179,34 @@ def attacks(input1, attack_name, param_array, mask=None):
     return out
 
 
+def _fmt(v):
+    """Numero o coppia in forma leggibile: 0.8 -> '0.8', (1, 7) -> '1x7'."""
+    if isinstance(v, (tuple, list)):
+        return "x".join(_fmt(x) for x in v)
+    return f"{v:g}" if isinstance(v, float) else str(v)
+
+
+def _describe_one(name, p):
+    if name == "jpeg":
+        return f"JPEG QF={p[0]}"
+    if name == "awgn":
+        return f"AWGN std={_fmt(p[0])}" + (f" (seed {p[1]})" if len(p) > 1 else "")
+    if name == "blur":
+        return f"Blur sigma={_fmt(p[0])}"
+    if name == "sharp":
+        return f"Sharpening sigma={_fmt(p[0])} alpha={_fmt(p[1])}"
+    if name == "resize":
+        return f"Resize scale={_fmt(p[0])} ({p[1] if len(p) > 1 else 'lab'})"
+    if name == "median":
+        k = p[0]
+        return f"Median {_fmt(k)}" if isinstance(k, (tuple, list)) else f"Median {k}x{k}"
+    return f"{name} {list(p)}"
+
+
 def describe(attack_name, param_array, mask_name=None):
-    """Testo per il log di gara, es. 'blur [0.6] + jpeg [12] su lisce50'."""
+    """Testo per il log di gara, nello stile dell'esempio del regolamento ('JPEG QF=90, Median 5x5'),
+    con gli attacchi nell'ordine in cui sono applicati, es. 'Blur sigma=0.6, JPEG QF=12 (solo zona lisce50)'."""
     if isinstance(attack_name, str):
         attack_name, param_array = [attack_name], [param_array]
-    s = " + ".join(f"{n} {list(p)}" for n, p in zip(attack_name, param_array))
-    return f"{s} su {mask_name}" if mask_name else s
+    s = ", ".join(_describe_one(n, list(p)) for n, p in zip(attack_name, param_array))
+    return f"{s} (solo zona {mask_name}, calcolata dalla watermarkata)" if mask_name else s

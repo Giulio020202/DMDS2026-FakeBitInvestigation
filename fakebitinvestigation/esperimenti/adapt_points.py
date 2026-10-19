@@ -8,7 +8,7 @@ Regole (regolamento + risposte del TA del 14/10):
 Simulazione: 3 immagini estratte a caso dalle 104 (N volte), per ogni immagine il miglior attacco
 riuscito (quello che un avversario caricherebbe). Incertezza: bootstrap sulle immagini.
 
-Uso (da embedding/esperimenti): python adapt_points.py v1 v2 v1_t58 v2_t58 [--key best|best_global]
+Uso (da fakebitinvestigation/esperimenti): python adapt_points.py v1 v2 v1_t58 v2_t58 [--key best|best_global]
 """
 import argparse, pickle
 import numpy as np

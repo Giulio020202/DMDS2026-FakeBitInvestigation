@@ -6,7 +6,7 @@ Due controlli sulla detection (14/10, regolamento aggiornato):
    detector indicati con --dets, come farebbe la detection).
 2) TEMPI: tempo di una chiamata al detector combinato, in un solo processo (da lanciare a CPU libera).
 
-Uso (da embedding/): python esperimenti/distrutte.py <tau> [--dets cos,rs_cos,sq:16:0.5,pr,prsq:16:0.5] [--step 8]
+Uso (da fakebitinvestigation/): python esperimenti/distrutte.py <tau> [--dets cos,rs_cos,sq:16:0.5,pr,prsq:16:0.5] [--step 8]
 """
 import argparse, os, sys, time
 

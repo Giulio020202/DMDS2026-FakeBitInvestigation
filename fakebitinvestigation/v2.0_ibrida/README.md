@@ -9,9 +9,11 @@ Versione consegnata: **2.0 ibrida (DCT + wavelet)**. La spiegazione completa del
 | `embedding_fakebitinvestigation.py` | inserisce il watermark | `embedding(input1, input2) -> output1` |
 | `detection_fakebitinvestigation.py` | dice se il watermark c'è ancora | `detection(input1, input2, input3) -> output1, output2` |
 | `attacks_fakebitinvestigation.py` | i nostri attacchi (solo quelli ammessi) | `attacks(input1, attack_name, param_array, mask=None) -> output1` |
-| `gara_fakebitinvestigation.py` | script di gara: cerca l'attacco più leggero che rompe ogni immagine | riga di comando |
+| `attacchi_fakebitinvestigation.py` | script di attacco: cerca l'attacco più leggero che rompe ogni immagine | riga di comando |
 | `roc_fakebitinvestigation.py` | ROC e soglia τ della detection | riga di comando |
 | `demo_fakebitinvestigation.py` | mostra come usare tutti i file qui sopra | riga di comando |
+| `difesa_fakebitinvestigation.py` | fase di difesa: prova dei target contro un attaccante forte, immagini da caricare | riga di comando |
+| `ISTRUZIONI_GARA.md` | cosa fare passo passo il giorno della gara (difesa e attacco) | — |
 | `roc_fakebitinvestigation.png` | curva ROC della run completa | — |
 | `roc_fakebitinvestigation_output.txt` | numeri stampati dalla run completa della ROC | — |
 
@@ -32,7 +34,7 @@ Tutti i comandi qui sotto si lanciano **dalla cartella `v2.0_ibrida/`**.
 
 ```bash
 python demo_fakebitinvestigation.py                 # embedding + detection + 11 attacchi d'esempio (~15 s)
-python demo_fakebitinvestigation.py --gara          # + script di gara contro la nostra detection (~6 min)
+python demo_fakebitinvestigation.py --attacchi          # + script di attacco contro la nostra detection (~6 min)
 python demo_fakebitinvestigation.py --roc           # + ROC veloce (solo per vedere che gira)
 python demo_fakebitinvestigation.py --image ../sample-images/0042.bmp --out /tmp/demo
 ```
@@ -82,11 +84,27 @@ att = attacks(wm, "awgn", [30], mask=smooth_mask(wm, 0.5))               # local
 - Solo gli attacchi ammessi (p.6): AWGN, blur, sharpening, JPEG, resize, median, anche combinati o localizzati.
 - Le zone degli attacchi localizzati (`MASKS`: zone lisce, testurizzate, bordi) sono calcolate **solo dalla watermarkata**, mai dall'originale.
 
-## Script di gara
+## Script di attacco
 
 ```bash
-python gara_fakebitinvestigation.py --images DIR --originals DIR --detections DIR --out DIR [--only gruppo] [--procs N] [--budget SECONDI] [--no-greedy]
+python attacchi_fakebitinvestigation.py --images DIR --originals DIR --detections DIR --out DIR \
+       [--only gruppo] [--procs N] [--total-min MINUTI] [--budget SECONDI] [--timeout SECONDI] [--no-greedy] [--resume]
 ```
+
+| Opzione | Default | Significato |
+|---|---|---|
+| `--total-min` | 100 | minuti totali a disposizione; il tempo per immagine si calcola da questo, dal numero di immagini e dai processi |
+| `--budget` | da `--total-min` | secondi per immagine (sovrascrive il calcolo automatico) |
+| `--procs` | n. core − 1 | immagini attaccate in parallelo |
+| `--timeout` | 10 | secondi massimi per una chiamata alla detection di un altro gruppo |
+| `--resume` | — | riparte dopo un'interruzione, saltando le immagini già nel log |
+
+Protezioni contro le detection degli altri gruppi:
+- timeout per ogni chiamata;
+- errori catturati: dopo 3 errori di fila l'immagine viene saltata e segnalata a fine run;
+- stampe soppresse, nessuna finestra.
+
+Il log `log_attacchi.csv` viene scritto man mano. `tutti_i_riusciti.csv` contiene tutti gli attacchi riusciti per ogni immagine, come alternative.
 
 - `--images`: le watermarkate scaricate, `<gruppo>_<imageName>.bmp`;
 - `--originals`: le originali, `<imageName>.bmp`;

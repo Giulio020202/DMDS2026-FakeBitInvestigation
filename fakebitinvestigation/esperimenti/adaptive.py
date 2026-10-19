@@ -21,7 +21,7 @@ chiarito con i TA se e' ammesso (p.3/p.6: vietato usare l'originale per localizz
 Difese: le configurazioni di multi.py ('base' = versione 1.0, 'dct_dwt34' = versione 2.0 ibrida),
 detection = massimo dei coseni sulle varianti (normale, de-stirate, pesata), ciascuna con la sua tau.
 
-Uso (da embedding/):
+Uso (da fakebitinvestigation/):
   python esperimenti/adaptive.py <config> <tau> [--target 62.05] [--subset A|B|all] [--procs 13] [--limit N] [--tag nome]
 Output: esperimenti/risultati/adapt_<tag>.pkl
 """

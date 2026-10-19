@@ -4,7 +4,7 @@ per ogni immagine K casi "altro gruppo" (stesso schema, watermark casuale, attac
 K casi "originale + attacco casuale" e l'originale esatta. Detector: coseno concatenato
 (massimo sulle varianti normale / de-stirate / pesata), come in multi.py.
 
-Uso (da embedding/): python esperimenti/h0_multi.py <config> [K]
+Uso (da fakebitinvestigation/): python esperimenti/h0_multi.py <config> [K]
 """
 import os, pickle, sys
 from multiprocessing import Pool

@@ -14,7 +14,7 @@ H0 come nella ROC del regolamento (p.4): W_random +-1 confrontato con i vettori 
 dall'attaccata, con la stessa funzione di similarita' -> tau a FPR 0.1% per OGNI configurazione
 (confronto a parita' di falsi positivi, non a parita' di tau).
 
-Uso (da embedding/): python esperimenti/multi.py <config> [--subset A] [--procs 13]
+Uso (da fakebitinvestigation/): python esperimenti/multi.py <config> [--subset A] [--procs 13]
 """
 import argparse, os, pickle, sys, time
 from multiprocessing import Pool
