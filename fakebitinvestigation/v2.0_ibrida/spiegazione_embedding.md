@@ -794,7 +794,7 @@ Le maschere (zone lisce, zone testurizzate, bordi, blocchi 8×8 allineati al JPE
 2. un WPSNR veloce (FFT, identico a quello dei lab: verificato) scarta senza chiamare la detection tutto ciò che va sotto i 35 dB;
 3. la detection del gruppo attaccato fa da "oracolo" (ammesso dai TA). Una ricerca binaria trova la forza minima che rompe, poi un raffinamento: circa 8 chiamate per famiglia;
 4. le stesse famiglie solo dentro 7 zone: fuori dalla zona l'immagine resta intatta, quindi dentro si può andare più forte restando sopra i 35 dB;
-5. *(solo con `--greedy`, spento di default)* dal migliore, si restituiscono alla watermarkata i blocchi 64×64 e 32×32 che non servono a rompere (come l'attaccante adattivo, §A8.1). È spento perché sceglie le zone guardando la detection altrui, che usa l'originale, e il PDF vieta l'originale per "localizzare": lo accendiamo solo se i TA lo confermano;
+5. dal migliore, si restituiscono alla watermarkata i blocchi 64×64 e 32×32 che non servono a rompere (come l'attaccante adattivo, §A8.1), guardando l'esito della detection altrui. Ce l'eravamo chiesti perché il PDF vieta l'originale per "localizzare": i TA hanno confermato (19/10) che è **ammesso**. Si salta con `--no-greedy`;
 6. si tiene il riuscito con il WPSNR più alto, lo si salva con il nome richiesto e si scrive il log per Excel (Image | Group | WPSNR | Attack(s)).
 
 Prova contro la nostra stessa detection (immagine 0000 a 62,05 dB, τ 0,087): rotta a **36,17 dB** con mediano 3 + JPEG 7 + zone, 514 chiamate, 5,5 minuti. È lo stesso tipo di attacco che l'attaccante adattivo aveva trovato contro di noi (§A8.2).
@@ -808,9 +808,9 @@ Prova contro la nostra stessa detection (immagine 0000 a 62,05 dB, τ 0,087): ro
 
 `--check` verifica in un minuto che ogni detection si carichi e risponda. Le abbiamo provate con detection costruite apposta difettose (una va in errore, una è lenta, una stampa): lo script non si ferma mai.
 
-**Il log per i TA.** Le descrizioni sono nello stile dell'esempio del regolamento (`JPEG QF=6, Blur sigma=0.8`). Quando un attacco è stato ristretto a zone scelte con la detection (punto 5), lo script salva anche la maschera delle zone come PNG, citata nel log, così l'attacco è riproducibile. Se il punto 5 sia ammesso l'abbiamo chiesto ai TA (il PDF vieta di usare l'originale per "localizzare"); fino alla risposta resta spento.
+**Il log per i TA.** Le descrizioni sono nello stile dell'esempio del regolamento (`JPEG QF=6, Blur sigma=0.8`). Quando un attacco è stato ristretto a zone scelte con la detection (punto 5), lo script salva anche la maschera delle zone come PNG, citata nel log, così l'attacco è riproducibile. I TA hanno confermato (19/10) che il punto 5 è ammesso; il PNG serve a rendere l'attacco verificabile.
 
-**Simulazione della fase di attacco (19/10).** 9 gruppi finti × 3 immagini = 27, tutte con il nostro schema (watermark diversi) e la nostra detection, perché non abbiamo il codice degli altri; 13 processi, greedy **acceso** (era il default di quel momento):
+**Simulazione della fase di attacco (19/10).** 9 gruppi finti × 3 immagini = 27, tutte con il nostro schema (watermark diversi) e la nostra detection, perché non abbiamo il codice degli altri; 13 processi, impostazioni di default:
 
 | | valore |
 |---|---|

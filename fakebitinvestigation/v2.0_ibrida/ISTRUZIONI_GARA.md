@@ -140,7 +140,7 @@ python attacchi_fakebitinvestigation.py --images ~/gara/attacco/img --originals 
        --detections ~/gara/attacco/det --out ~/gara/attacco/out --total-min 100
 ```
 
-- **Tempo misurato** (simulazione del 19/10: 27 immagini, 9 gruppi × 3, 13 processi, detection da circa 0,6 s, con il greedy acceso; senza è più veloce): **32 minuti** in tutto, con 18 immagini rotte su 27, almeno una per ognuno dei 9 gruppi, a 35,6–38,0 dB. Le immagini che non si rompono finiscono prima, in circa 7 minuti, perché esauriscono i tentativi. Con detection più lente il tempo cresce, ma il tetto resta `--total-min`.
+- **Tempo misurato** (simulazione del 19/10: 27 immagini, 9 gruppi × 3, 13 processi, detection da circa 0,6 s, con le zone guidate dalla detection, come di default): **32 minuti** in tutto, con 18 immagini rotte su 27, almeno una per ognuno dei 9 gruppi, a 35,6–38,0 dB. Le immagini che non si rompono finiscono prima, in circa 7 minuti, perché esauriscono i tentativi. Con detection più lente il tempo cresce, ma il tetto resta `--total-min`.
 - `--total-min 100`: lo script si dà 100 minuti in tutto e calcola da solo il tempo per immagine. **Partendo alle 10:30 finisce entro le 12:10**, con 20 minuti di margine per gli ultimi upload. Se si parte più tardi, abbassarlo, per esempio `--total-min 80` partendo alle 10:50.
 - Stampa una riga per immagine man mano che finisce:
   ```
@@ -187,4 +187,4 @@ Il regolamento chiede un **log Excel** con colonne Image | Group | WPSNR | Attac
 | una detection altrui è lentissima | il timeout (10 s) la ferma: dopo 3 timeout di fila l'immagine viene saltata. Si può provare `--only gruppo --timeout 20` alla fine |
 | lo script si è fermato | rilanciare con `--resume` |
 | siamo in ritardo | ridurre `--total-min` |
-| i TA hanno confermato che le zone scelte con la detection sono ammesse | aggiungere `--greedy` al comando dell'attacco (+0,2–0,4 dB per immagine); **senza conferma scritta non usarlo** |
+| siamo molto in ritardo | aggiungere `--no-greedy`: più veloce, WPSNR un po' più basso (circa −0,2/−0,4 dB) |

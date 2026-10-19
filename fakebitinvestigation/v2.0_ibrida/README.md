@@ -88,7 +88,7 @@ att = attacks(wm, "awgn", [30], mask=smooth_mask(wm, 0.5))               # local
 
 ```bash
 python attacchi_fakebitinvestigation.py --images DIR --originals DIR --detections DIR --out DIR \
-       [--only gruppo] [--procs N] [--total-min MINUTI] [--budget SECONDI] [--timeout SECONDI] [--greedy] [--resume]
+       [--only gruppo] [--procs N] [--total-min MINUTI] [--budget SECONDI] [--timeout SECONDI] [--no-greedy] [--resume]
 ```
 
 | Opzione | Default | Significato |
@@ -114,7 +114,7 @@ Il log `log_attacchi.csv` viene scritto man mano. `tutti_i_riusciti.csv` contien
 Per ogni immagine:
 1. prova 25 famiglie di attacchi, sia globali sia localizzate su 7 zone;
 2. per ognuna cerca con ricerca binaria il parametro più leggero che rompe, usando come verifica l'esito della detection del gruppo attaccato (uso confermato dai TA);
-3. *(solo con `--greedy`, spento di default)* "restituisce" alla watermarkata i blocchi 64×64 e 32×32 che non servono a rompere, per alzare il WPSNR. È spento perché sceglie le zone guardando la detection altrui, che usa l'originale, e il regolamento vieta l'originale per "localizzare" un attacco. Si accende solo se i TA lo confermano;
+3. "restituisce" alla watermarkata i blocchi 64×64 e 32×32 che non servono a rompere, per alzare il WPSNR, usando l'esito della detection del gruppo attaccato (ammesso dai TA il 19/10). La maschera delle zone viene salvata come PNG e citata nel log. Si salta con `--no-greedy`;
 4. tiene il riuscito con il WPSNR più alto: se ne carica uno solo per immagine (p.7).
 
 Noi non usiamo mai direttamente l'originale: lo riceve solo la detection altrui, come `input1`.
