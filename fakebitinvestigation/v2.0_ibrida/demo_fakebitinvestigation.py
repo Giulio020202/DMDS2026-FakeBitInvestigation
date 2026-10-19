@@ -68,7 +68,7 @@ def main():
 
     # ---------------------------------------------------------------- 2. detection
     print(f"\n=== 2. DETECTION (tau = {TAU}) ===")
-    print(f"{'immagine data come attaccata':45s} {'output1':>7s} {'output2 (WPSNR)':>16s} {'tempo':>7s}  esito")
+    print(f"{'immagine data come attaccata':66s} {'output1':>7s} {'output2 (WPSNR)':>16s} {'tempo':>7s}  esito")
 
     def run(label, path, is_original=False):
         t = time.time()
@@ -82,7 +82,7 @@ def main():
             esito = "assente, ma WPSNR < 35: attacco non valido"
         else:
             esito = "watermark presente"
-        print(f"{label:45s} {o1:7d} {o2:16.2f} {dt:6.2f}s  {esito}")
+        print(f"{label:66s} {o1:7d} {o2:16.2f} {dt:6.2f}s  {esito}")
 
     run("watermarkata (nessun attacco)", p_wm)
     run("originale (deve dare 0)", a.image, is_original=True)

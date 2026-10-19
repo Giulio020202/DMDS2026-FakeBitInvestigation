@@ -189,6 +189,7 @@ File: `embedding_fakebitinvestigation.py`. Lo leggiamo dall'alto in basso.
 
 ```python
 TARGET_WPSNR = 62.05   # dB: appena sopra la soglia 62 della tabella punti (5 punti)
+TARGET_BY_IMAGE = {}   # target diverso per singola immagine, es. {"buildings": 58.05}; vuoto = TARGET_WPSNR per tutte
 R_MIN = 32.0           # banda radiale dei coefficienti DCT (come la v1.0)
 R_MAX = 128.0
 N_BITS = 1024          # lunghezza del watermark assegnato
@@ -201,7 +202,9 @@ AMP_MIN, AMP_MAX = 0.2, 40.0   # intervallo di ricerca della scala
 N_ITER = 14                    # passi di bisezione
 ```
 
-Sono **le uniche cose che si possono toccare dopo il 27/10** ("fine-tuning: parametri e posizioni di embedding"). Quelli che descrivono *dove* sta il watermark (R_MIN, R_MAX, WAVELET, DWT_LEVELS, DWT_USE, N_BITS) vanno tenuti **identici** nella detection; TARGET_WPSNR, K_DCT e K_DWT riguardano solo l'embedding.
+Sono **le uniche cose che si possono toccare dopo il 27/10** ("fine-tuning: parametri e posizioni di embedding"). Quelli che descrivono *dove* sta il watermark (R_MIN, R_MAX, WAVELET, DWT_LEVELS, DWT_USE, N_BITS) vanno tenuti **identici** nella detection; TARGET_WPSNR, TARGET_BY_IMAGE, K_DCT e K_DWT riguardano solo l'embedding.
+
+`TARGET_BY_IMAGE` (aggiunto il 19/10) serve il giorno della gara. I punti qualità si calcolano sulla **media** dei WPSNR delle 3 immagini (risposta dei TA), quindi possiamo mettere più energia nell'immagine più difficile da difendere. Per esempio `{"buildings": 58.05}` dà 58,05 dB a `buildings.bmp` e lascia le altre a `TARGET_WPSNR`. La chiave è il nome del file senza estensione. Il dizionario vuoto (il default) lascia il comportamento identico a prima. Lo riempie lo script di difesa (§A8.4), così il codice riproduce esattamente le immagini che carichiamo.
 
 > 🗣 **In parole povere**: è il "pannello di controllo". TARGET_WPSNR è la manopola del volume; gli altri dicono in quali "stanze" dell'immagine nascondere il watermark.
 
@@ -300,6 +303,7 @@ def embedding(input1, input2):
     bits = np.load(input2).astype(np.float64).ravel()[:N_BITS]
     w = 2.0 * bits - 1.0                          # 0/1 -> -1/+1
     o = original.astype(np.float64)
+    target = TARGET_BY_IMAGE.get(os.path.splitext(os.path.basename(input1))[0], TARGET_WPSNR)
 
     c = _dct2(o)
     uu, vv = _select_pairs(c)
@@ -315,7 +319,7 @@ def embedding(input1, input2):
     for _ in range(N_ITER):
         mid = np.sqrt(lo * hi)
         candidate = marked(mid)
-        if wpsnr(original, candidate) >= TARGET_WPSNR:
+        if wpsnr(original, candidate) >= target:
             lo, best = mid, candidate
         else:
             hi = mid
@@ -326,7 +330,7 @@ def embedding(input1, input2):
 
 Passo per passo:
 
-1. **legge** l'originale in grigi con OpenCV e il watermark dal file `.npy` (1024 bit), poi lo trasforma in ±1;
+1. **legge** l'originale in grigi con OpenCV e il watermark dal file `.npy` (1024 bit), poi lo trasforma in ±1; sceglie il target di WPSNR: quello di `TARGET_BY_IMAGE` per quell'immagine, se c'è, altrimenti `TARGET_WPSNR`;
 2. calcola le due trasformate dell'originale e **sceglie le coppie** in ciascuna;
 3. costruisce il **disegno complessivo** del watermark nei pixel: disegno DCT + disegno wavelet (le trasformate sono lineari, quindi si possono sommare nei pixel);
 4. `marked(s)` produce l'immagine watermarkata con scala `s`: somma, arrotonda a interi, taglia in [0, 255];
@@ -562,6 +566,13 @@ Il regolamento penalizza chi trova il watermark in immagini "distrutte", ma ora 
 
 Lo sharpening estremo **amplifica** le frequenze medie, dove sta il nostro watermark: il watermark c'è davvero, anzi è più forte. Abbiamo deciso di lasciare la detection così: lo scopo della regola nuova è proprio che la detection non rifiuti un watermark presente per una questione di WPSNR.
 
+**Ricontrollo del 19/10 (τ = 0,087, immagine 0042).**
+- Immagine nera, bianca, costante, rumore puro, gradiente, negativo e immagine non correlata: tutte "assente".
+- Sharpening σ=4 α=3 (22,0 dB) e σ=2 α=15 (19,8 dB): **"presente"**.
+- σ=10 α=3, σ=4 α=8 e σ=10 α=8: "assente".
+
+Il PDF elenca tra le penalità la detection che *"finds a watermark in destroyed images (WPSNR ≤ 25 dB)"*. Nessun gruppo caricherebbe un'immagine del genere, perché sotto i 35 dB l'attacco non vale, ma i TA potrebbero provarla nel controllo del codice. Abbiamo quindi chiesto ai TA se questo caso rientra nella penalità e, nel caso, se è ammesso un controllo basato sul risultato dell'estrazione e non sul WPSNR, per esempio un watermark estratto "troppo amplificato". **In attesa di risposta**: finché non arriva la detection resta com'è.
+
 ---
 
 ## A8. Quanto siamo robusti, e quanti punti ci aspettiamo
@@ -622,6 +633,15 @@ Il target **non** si sceglie una volta per tutte: è un parametro di fine-tuning
 3. per ogni immagine guardiamo quanto è difficile da rompere: le immagini "facili da difendere" (testurizzate) reggono anche a target alti, quelle "difficili" (molte zone piatte, Parte B §11.7) vanno messe più in basso;
 4. scegliamo la combinazione di target che massimizza i punti attesi, ricordando che conta la **media**: per esempio, se vogliamo 5 punti qualità basta che la media dei 3 WPSNR sia ≥ 62, quindi un'immagine difficile può stare più in basso se un'altra sta più in alto. Questa combinazione non l'abbiamo ancora simulata: lo faremo con le immagini vere;
 5. τ non cambia con il target (dipende dai falsi positivi, che non dipendono dalla forza del watermark), ma lo ricontrolliamo sull'originale delle 3 immagini vere prima dell'upload.
+
+**Lo strumento (19/10): `difesa_fakebitinvestigation.py`.** Automatizza i punti 1–5. Per ogni immagine e ogni target (58,05 e 62,05):
+- fa l'embedding;
+- controlla che watermarkata → 1, originale → 0 e che la detection stia sotto i 5 s;
+- **attacca noi stessi** con il motore dello script di attacco (§A13), che è l'attaccante adattivo di §A8.1, al massimo 15 minuti per prova, 6 prove in parallelo.
+
+Poi prova tutte le 8 combinazioni di target e stima i punti di difesa con la tabella del regolamento: qualità sulla media, robustezza sul WPSNR medio degli attacchi riusciti, 6 + 2 se nessuna immagine viene rotta. Stampa la riga `TARGET_BY_IMAGE` da copiare nell'embedding. Con `--final` rigenera le 3 immagini **con il codice così com'è**, le ricontrolla e le salva con il nome del regolamento. Così codice consegnato e immagini caricate coincidono.
+
+Limite da tenere a mente: simula **un** avversario, per quanto forte. In gara ci attaccano 9 gruppi, quindi il bonus "mai rotti" è meno probabile di quanto la simulazione suggerisca. La procedura passo passo, con gli orari, è in `ISTRUZIONI_GARA.md`.
 
 ---
 
@@ -774,10 +794,33 @@ Le maschere (zone lisce, zone testurizzate, bordi, blocchi 8×8 allineati al JPE
 2. un WPSNR veloce (FFT, identico a quello dei lab: verificato) scarta senza chiamare la detection tutto ciò che va sotto i 35 dB;
 3. la detection del gruppo attaccato fa da "oracolo" (ammesso dai TA). Una ricerca binaria trova la forza minima che rompe, poi un raffinamento: circa 8 chiamate per famiglia;
 4. le stesse famiglie solo dentro 7 zone: fuori dalla zona l'immagine resta intatta, quindi dentro si può andare più forte restando sopra i 35 dB;
-5. dal migliore, si restituiscono alla watermarkata i blocchi 64×64 e 32×32 che non servono a rompere (come l'attaccante adattivo, §A8.1);
+5. *(solo con `--greedy`, spento di default)* dal migliore, si restituiscono alla watermarkata i blocchi 64×64 e 32×32 che non servono a rompere (come l'attaccante adattivo, §A8.1). È spento perché sceglie le zone guardando la detection altrui, che usa l'originale, e il PDF vieta l'originale per "localizzare": lo accendiamo solo se i TA lo confermano;
 6. si tiene il riuscito con il WPSNR più alto, lo si salva con il nome richiesto e si scrive il log per Excel (Image | Group | WPSNR | Attack(s)).
 
 Prova contro la nostra stessa detection (immagine 0000 a 62,05 dB, τ 0,087): rotta a **36,17 dB** con mediano 3 + JPEG 7 + zone, 514 chiamate, 5,5 minuti. È lo stesso tipo di attacco che l'attaccante adattivo aveva trovato contro di noi (§A8.2).
+
+**Protezioni per il giorno della gara.** Le detection degli altri gruppi sono codice che non conosciamo, quindi lo script:
+- mette un **timeout** su ogni chiamata (10 s);
+- **cattura gli errori**: dopo 3 errori di fila salta l'immagine e la segnala;
+- **sopprime le stampe**;
+- calcola il tempo per immagine dal tempo totale a disposizione (`--total-min`);
+- scrive il log man mano e può ripartire dopo un'interruzione (`--resume`).
+
+`--check` verifica in un minuto che ogni detection si carichi e risponda. Le abbiamo provate con detection costruite apposta difettose (una va in errore, una è lenta, una stampa): lo script non si ferma mai.
+
+**Il log per i TA.** Le descrizioni sono nello stile dell'esempio del regolamento (`JPEG QF=6, Blur sigma=0.8`). Quando un attacco è stato ristretto a zone scelte con la detection (punto 5), lo script salva anche la maschera delle zone come PNG, citata nel log, così l'attacco è riproducibile. Se il punto 5 sia ammesso l'abbiamo chiesto ai TA (il PDF vieta di usare l'originale per "localizzare"); fino alla risposta resta spento.
+
+**Simulazione della fase di attacco (19/10).** 9 gruppi finti × 3 immagini = 27, tutte con il nostro schema (watermark diversi) e la nostra detection, perché non abbiamo il codice degli altri; 13 processi, greedy **acceso** (era il default di quel momento):
+
+| | valore |
+|---|---|
+| tempo totale | **32 minuti** (tetto: 100) |
+| immagini rotte | **18 su 27**, almeno una per **ognuno** dei 9 gruppi (attività 100%) |
+| WPSNR degli attacchi riusciti | media **36,5 dB**, da 35,6 a 38,0 |
+| immagini non rotte | finite in ~7 minuti l'una (tentativi esauriti) |
+| errori | 0 |
+
+Questi numeri misurano i **tempi** dello script e, di riflesso, quanto un attaccante ben attrezzato rompe **noi** (circa 2 immagini su 3, sempre nella fascia 35–38 dB). Non dicono quanto romperemo gli altri: dipende dai loro schemi.
 
 > 🗣 **In parole povere**: in difesa abbiamo imparato quali attacchi fanno più male a uno schema come il nostro. In attacco li usiamo contro gli altri, e chiediamo alla loro stessa detection quanto possiamo andarci piano.
 
@@ -798,7 +841,7 @@ print(detection('../sample-images/0000.bmp', 'fakebitinvestigation_0000.bmp', 'f
 python roc_fakebitinvestigation.py
 ```
 
-Per cambiare il target (fine-tuning): modificare `TARGET_WPSNR` nell'embedding. Non serve toccare la detection (τ non dipende dal target).
+Per cambiare il target (fine-tuning): modificare `TARGET_WPSNR` nell'embedding, oppure `TARGET_BY_IMAGE` per una singola immagine. Non serve toccare la detection (τ non dipende dal target).
 
 ---
 
@@ -818,6 +861,46 @@ Per cambiare il target (fine-tuning): modificare `TARGET_WPSNR` nell'embedding. 
 - **Bisezione**: ricerca che dimezza ogni volta l'intervallo; serve a trovare l'ampiezza giusta.
 - **Attaccante adattivo**: il nostro avversario simulato che cerca l'attacco più leggero immagine per immagine.
 - **Punti attesi**: la media dei punti che prenderemmo su tante gare simulate.
+
+---
+
+## A15. I numeri principali in grafici
+
+Gli stessi numeri delle sezioni precedenti, disegnati. Nessun numero nuovo: lo script `grafici/genera_grafici.py` riporta accanto a ogni dato la sezione da cui viene.
+
+### A15.1 La soglia τ (§A7)
+
+![Le tre soglie della ROC completa](grafici/g1_soglie_roc.png)
+
+Per ognuno dei tre tipi di "watermark assente" la ROC dà la soglia sotto la quale avremmo più di un falso positivo su mille. Il caso più insidioso è l'immagine di un **altro gruppo** attaccata (H0-B): è quello che fissa τ.
+
+![Falsi positivi in calibrazione e in test](grafici/g2_falsi_positivi.png)
+
+Sulle 30 immagini mai usate per scegliere τ, i falsi positivi restano sotto lo 0,1% (anzi, a zero in due casi su tre): la soglia non è "su misura" per le immagini di calibrazione.
+
+![La curva ROC della run completa](roc_fakebitinvestigation.png)
+
+### A15.2 La robustezza (§A8)
+
+![Immagini rotte, v1.0 contro v2.0](grafici/g3_robustezza_rotte.png)
+
+![WPSNR degli attacchi riusciti](grafici/g4_robustezza_wpsnr.png)
+
+Chi ci rompe deve scendere quasi sempre sotto i 38 dB, nella fascia che per noi vale comunque il massimo dei punti di robustezza. La v2.0 viene rotta un po' meno spesso dall'attaccante adattivo e costringe ad attacchi un po' più pesanti (WPSNR più basso).
+
+![Gli attacchi che ci rompono](grafici/g6_attacchi_vincenti.png)
+
+![Punti attesi per target](grafici/g5_punti_attesi.png)
+
+Le differenze tra le versioni sono di pochi centesimi di punto; scendere a 58,05 dB vale circa +0,2 punti (contro **un** avversario simulato).
+
+### A15.3 La fase di attacco e i tempi (§A13, §A12)
+
+![Simulazione dello script di attacco](grafici/g7_simulazione_attacco.png)
+
+Ogni punto è un'immagine rotta nella simulazione (9 gruppi finti × 3 immagini, tutte con il nostro schema): tutte nella fascia 35–38 dB.
+
+![Tempo della detection](grafici/g8_tempi_detection.png)
 
 ---
 

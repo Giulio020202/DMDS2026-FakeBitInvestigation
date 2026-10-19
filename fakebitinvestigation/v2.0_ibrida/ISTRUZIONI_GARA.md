@@ -140,11 +140,11 @@ python attacchi_fakebitinvestigation.py --images ~/gara/attacco/img --originals 
        --detections ~/gara/attacco/det --out ~/gara/attacco/out --total-min 100
 ```
 
-- **Tempo misurato** (simulazione del 19/10: 27 immagini, 9 gruppi × 3, 13 processi, detection da circa 0,6 s): **32 minuti** in tutto, con 18 immagini rotte su 27, almeno una per ognuno dei 9 gruppi, a 35,6–38,0 dB. Le immagini che non si rompono finiscono prima, in circa 7 minuti, perché esauriscono i tentativi. Con detection più lente il tempo cresce, ma il tetto resta `--total-min`.
+- **Tempo misurato** (simulazione del 19/10: 27 immagini, 9 gruppi × 3, 13 processi, detection da circa 0,6 s, con il greedy acceso; senza è più veloce): **32 minuti** in tutto, con 18 immagini rotte su 27, almeno una per ognuno dei 9 gruppi, a 35,6–38,0 dB. Le immagini che non si rompono finiscono prima, in circa 7 minuti, perché esauriscono i tentativi. Con detection più lente il tempo cresce, ma il tetto resta `--total-min`.
 - `--total-min 100`: lo script si dà 100 minuti in tutto e calcola da solo il tempo per immagine. **Partendo alle 10:30 finisce entro le 12:10**, con 20 minuti di margine per gli ultimi upload. Se si parte più tardi, abbassarlo, per esempio `--total-min 80` partendo alle 10:50.
 - Stampa una riga per immagine man mano che finisce:
   ```
-  [5/27 14 min] [ROTTA] gruppoX_buildings: 37.12 dB con median [3] + jpeg [7] + zone (greedy, detection) (480 chiamate, 0 errori, 320 s)
+  [5/27 14 min] [ROTTA] gruppoX_buildings: 37.12 dB con Median 3x3, JPEG QF=7 (480 chiamate, 0 errori, 320 s)
   ```
 - **Upload man mano (B)**: ogni `[ROTTA]` ha già l'immagine pronta in `~/gara/attacco/out/` con il nome giusto, `fakebitinvestigation_<gruppo>_<imageName>.bmp`. Lo script stampa una sola riga per immagine, ed è già il miglior attacco trovato, quindi si carica **un'immagine sola per immagine attaccata** come vuole il regolamento.
 - **Se lo script si interrompe** (crash, PC spento): rilanciare lo stesso comando con `--resume` e un `--total-min` ridotto. Riparte saltando le immagini già fatte.
@@ -186,4 +186,5 @@ Il regolamento chiede un **log Excel** con colonne Image | Group | WPSNR | Attac
 | il check dà `ModuleNotFoundError` | `pip install` della libreria, poi ripetere il check |
 | una detection altrui è lentissima | il timeout (10 s) la ferma: dopo 3 timeout di fila l'immagine viene saltata. Si può provare `--only gruppo --timeout 20` alla fine |
 | lo script si è fermato | rilanciare con `--resume` |
-| siamo in ritardo | ridurre `--total-min`, oppure aggiungere `--no-greedy` (più veloce, WPSNR un po' più basso) |
+| siamo in ritardo | ridurre `--total-min` |
+| i TA hanno confermato che le zone scelte con la detection sono ammesse | aggiungere `--greedy` al comando dell'attacco (+0,2–0,4 dB per immagine); **senza conferma scritta non usarlo** |

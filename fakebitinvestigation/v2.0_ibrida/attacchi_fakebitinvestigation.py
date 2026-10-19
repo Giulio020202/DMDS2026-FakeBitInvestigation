@@ -19,8 +19,10 @@ Come cerca (per ogni immagine):
        - raffinamento continuo tra l'ultimo che non rompe e il primo che rompe (~3 chiamate).
   2. LOCALIZZATI: le stesse famiglie applicate solo dentro una zona (MASKS). Fuori dalla zona
      l'immagine resta intatta, quindi dentro si puo' andare molto piu' forte restando sopra 35 dB.
-  3. ZONE GUIDATE DALLA DETECTION (spento con --no-greedy): dal miglior attacco trovato si
+  3. ZONE GUIDATE DALLA DETECTION (SPENTO di default, si accende con --greedy): dal miglior attacco trovato si
      "restituiscono" alla watermarkata i blocchi 64x64 e poi 32x32 che non servono a rompere.
+     Spento di default perche' sceglie le zone guardando la detection altrui, che usa l'originale, e il
+     regolamento vieta l'originale per "localize" un attacco: lo accendiamo solo se i TA lo confermano.
 Si tiene il riuscito con il WPSNR piu' alto (p.7: se ne carica uno solo per immagine).
 Le famiglie e le zone sono in ordine di efficacia (dalle nostre prove): se il tempo finisce, si
 perdono solo i tentativi meno promettenti.
@@ -47,7 +49,7 @@ Cartelle attese:
 Uso (da v2.0_ibrida/):
   python attacchi_fakebitinvestigation.py --images DIR --originals DIR --detections DIR --out DIR
          [--only gruppo] [--procs N] [--total-min MINUTI] [--budget SECONDI] [--timeout SECONDI]
-         [--no-greedy] [--resume]
+         [--greedy] [--resume]
 """
 import os
 
@@ -365,7 +367,8 @@ def main():
     ap.add_argument("--total-min", type=float, default=100, help="minuti totali a disposizione (default 100)")
     ap.add_argument("--budget", type=float, default=None, help="secondi per immagine (default: da --total-min)")
     ap.add_argument("--timeout", type=float, default=10, help="secondi massimi per una chiamata alla detection")
-    ap.add_argument("--no-greedy", action="store_true", help="salta la fase delle zone guidate dalla detection")
+    ap.add_argument("--greedy", action="store_true",
+                    help="zone scelte con la detection altrui (punto 3): SOLO se confermato dai TA")
     ap.add_argument("--resume", action="store_true", help="salta le immagini gia' presenti nel log")
     ap.add_argument("--check", action="store_true",
                     help="solo controllo: ogni detection si carica, dice 'presente' sulla watermarkata, tempo")
@@ -397,7 +400,7 @@ def main():
         if not os.path.exists(det_path) or not os.path.exists(orig_path):
             print(f"[salto] {fname}: manca {det_path if not os.path.exists(det_path) else orig_path}")
             continue
-        jobs.append([fname, det_path, orig_path, os.path.join(a.images, fname), a.out, 0, not a.no_greedy, a.timeout])
+        jobs.append([fname, det_path, orig_path, os.path.join(a.images, fname), a.out, 0, a.greedy, a.timeout])
     if not jobs:
         sys.exit("nessuna immagine da attaccare")
 
