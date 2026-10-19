@@ -1,28 +1,0 @@
-### 1) immagini distrutte e tempi (CPU libera)
-[##                            ] 1/13 immagini [####                          ] 2/13 immagini [######                        ] 3/13 immagini [#########                     ] 4/13 immagini [###########                   ] 5/13 immagini [#############                 ] 6/13 immagini [################              ] 7/13 immagini [##################            ] 8/13 immagini [####################          ] 9/13 immagini [#######################       ] 10/13 immagini [#########################     ] 11/13 immagini [###########################   ] 12/13 immagini [##############################] 13/13 immagini 
-== immagini distrutte (WPSNR <= 25): 88 casi su 13 immagini, tau 0.11
-   cos                    'presente' 27/88
-   rs_cos                 'presente' 28/88
-   sq:16:0.5              'presente' 25/88
-   pr                     'presente' 27/88
-   prsq:16:0.5            'presente' 26/88
-   max attuale            'presente' 30/88
-   max con predizione     'presente' 31/88
-   per attacco (max attuale -> max con predizione):
-     awgn 120             presente 1/13 -> 1/13   sim max 0.124 -> 0.124
-     blur 8               presente 4/4 -> 4/4   sim max 0.244 -> 0.268
-     median 21            presente 0/2 -> 0/2   sim max 0.091 -> 0.091
-     resize 0.1           presente 0/4 -> 1/4   sim max 0.106 -> 0.137
-     sharp 10,3           presente 12/12 -> 12/12   sim max 0.723 -> 0.723
-     sharp 4,8            presente 13/13 -> 13/13   sim max 0.709 -> 0.709
-     nero                 presente 0/13 -> 0/13   sim max 0.032 -> 0.051
-     bianco               presente 0/13 -> 0/13   sim max 0.057 -> 0.074
-     negativo             presente 0/13 -> 0/13   sim max 0.010 -> 0.012
-     awgn 80              presente 0/1 -> 0/1   sim max 0.060 -> 0.060
-== tempo di una chiamata a tutti i detector (cos, rs_cos, sq:16:0.5, pr, prsq:16:0.5), un processo: media 0.36 s, mediana 0.29 s, max 0.87 s
-### 2) batteria v3, 26 immagini di A
-v3A26_fast [#                             ] 1/26  24.0 min, mancano ~600.0 min v3A26_fast [##                            ] 2/26  26.5 min, mancano ~317.8 min v3A26_fast [###                           ] 3/26  28.6 min, mancano ~219.6 min v3A26_fast [####                          ] 4/26  32.8 min, mancano ~180.5 min v3A26_fast [#####                         ] 5/26  32.8 min, mancano ~137.9 min v3A26_fast [######                        ] 6/26  32.8 min, mancano ~109.4 min v3A26_fast [########                      ] 7/26  32.8 min, mancano ~89.1 min v3A26_fast [#########                     ] 8/26  32.8 min, mancano ~73.9 min v3A26_fast [##########                    ] 9/26  32.8 min, mancano ~62.0 min v3A26_fast [###########                   ] 10/26  32.8 min, mancano ~52.5 min v3A26_fast [############                  ] 11/26  32.8 min, mancano ~44.8 min v3A26_fast [#############                 ] 12/26  32.8 min, mancano ~38.3 min v3A26_fast [###############               ] 13/26  32.8 min, mancano ~32.8 min v3A26_fast [################              ] 14/26  41.5 min, mancano ~35.6 min v3A26_fast [#################             ] 15/26  42.0 min, mancano ~30.8 min v3A26_fast [##################            ] 16/26  42.8 min, mancano ~26.7 min v3A26_fast [###################           ] 17/26  43.7 min, mancano ~23.2 min v3A26_fast [####################          ] 18/26  43.7 min, mancano ~19.4 min v3A26_fast [#####################         ] 19/26  43.7 min, mancano ~16.1 min v3A26_fast [#######################       ] 20/26  44.1 min, mancano ~13.2 min v3A26_fast [########################      ] 21/26  45.0 min, mancano ~10.7 min v3A26_fast [#########################     ] 22/26  45.0 min, mancano ~8.2 min v3A26_fast [##########################    ] 23/26  45.0 min, mancano ~5.9 min v3A26_fast [###########################   ] 24/26  45.0 min, mancano ~3.7 min v3A26_fast [############################  ] 25/26  45.0 min, mancano ~1.8 min v3A26_fast [##############################] 26/26  45.0 min, mancano ~0.0 min 
-26 immagini, 756 attacchi ciascuna, 2700s -> /home/teto03/Scrivania/DMDS2026-FakeBitInvestigation/embedding/esperimenti/risultati/v3A26_fast.pkl
-### 3) falsi positivi realistici
-esperimenti/coda5.sh: riga 17: ../OFF_MDS_ENV/bin/python: File o directory non esistente
-CODA5 FINITA

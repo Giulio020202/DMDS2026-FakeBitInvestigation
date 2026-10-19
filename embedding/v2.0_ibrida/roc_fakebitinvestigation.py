@@ -24,10 +24,18 @@ Segue la procedura di p.4 del regolamento (Lab4, ROC-curves, esempio 2), con i c
 
 Questo codice NON fa parte della detection (p.4: la soglia si calcola una volta sola, fuori).
 
-Uso (da qualunque cartella; di default usa ../sample-images e ../fakebitinvestigation.npy):
-    python roc_fakebitinvestigation.py [cartella_immagini] [n_attacchi_per_immagine]
-Output: stampa tau e salva la curva in roc_fakebitinvestigation.png
+Uso (da qualunque cartella):
+    python roc_fakebitinvestigation.py [--images DIR] [--watermark FILE.npy] [--attacks N] [--quick] [--out FILE.png]
+  --images     cartella con le immagini BMP 512x512 (default: ../sample-images, 101 immagini)
+  --watermark  watermark .npy (default: ../fakebitinvestigation.npy)
+  --attacks    attacchi casuali per immagine (default 40)
+  --quick      prova veloce: solo le prime 10 immagini e 5 attacchi ciascuna; la tau che esce NON e'
+               quella vera (troppi pochi campioni), serve solo a vedere che tutto gira
+  --out        dove salvare la curva (default: roc_fakebitinvestigation.png accanto a questo file)
+Output: tau stampata a video + curva .png.
+Dipendenze in piu' rispetto a embedding/detection: scikit-learn, matplotlib, pillow, scikit-image.
 """
+import argparse
 import glob
 import io
 import os
@@ -135,10 +143,10 @@ def random_attack(rng):
 
 # ----------------------------------------------------------------- un'immagine
 def _one_image(args):
-    path, n_att, seed = args
+    path, n_att, seed, watermark = args
     rng = np.random.default_rng(seed)
     original = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
-    watermarked = emb.embedding(path, WATERMARK)
+    watermarked = emb.embedding(path, watermark)
     # "altro gruppo": stessa immagine, stesso schema, watermark casuale (file temporaneo per embedding())
     with tempfile.TemporaryDirectory() as tmp:
         other_wm = os.path.join(tmp, "altro.npy")
@@ -175,13 +183,23 @@ def _tau(h0, fpr_target):
 
 
 def main():
-    folder = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, "..", "sample-images")
-    n_att = int(sys.argv[2]) if len(sys.argv) > 2 else 40
-    files = sorted(glob.glob(os.path.join(folder, "*.bmp")))
+    ap = argparse.ArgumentParser(description="ROC e soglia tau del gruppo fakebitinvestigation (v2.0)")
+    ap.add_argument("--images", default=os.path.join(HERE, "..", "sample-images"))
+    ap.add_argument("--watermark", default=WATERMARK)
+    ap.add_argument("--attacks", type=int, default=40)
+    ap.add_argument("--quick", action="store_true")
+    ap.add_argument("--out", default=os.path.join(HERE, "roc_fakebitinvestigation.png"))
+    a = ap.parse_args()
+    files = sorted(glob.glob(os.path.join(a.images, "*.bmp")))
+    n_att = a.attacks
+    if a.quick:
+        files, n_att = files[:10], 5
+    if not files:
+        sys.exit(f"nessuna immagine .bmp in {a.images}")
     t0 = time.time()
     with Pool(max(1, (os.cpu_count() or 2) - 1)) as p:
         res, res_idx = [], []
-        jobs = [(f, n_att, SEED + i) for i, f in enumerate(files)]
+        jobs = [(f, n_att, SEED + i, a.watermark) for i, f in enumerate(files)]
         for i, r in enumerate(p.imap(_one_image, jobs, chunksize=1)):
             res.append(r); res_idx.append(i)
             k = len(res)                     # barra di avanzamento (su stderr)
@@ -190,7 +208,7 @@ def main():
                              f"{el / 60:.1f} min, mancano ~{el / k * (len(files) - k) / 60:.1f} min ")
             sys.stderr.flush()
         sys.stderr.write("\n")
-    # imap_unordered non conserva l'ordine: ricostruiamo quale immagine e' di calibrazione e quale di test
+    # res_idx[j] = indice dell'immagine del risultato j: decide se e' di calibrazione o di test
     test_set = {i for i in range(len(files)) if i % TEST_EVERY >= 7}
     print(f"{len(files)} immagini ({len(files) - len(test_set)} calibrazione, {len(test_set)} test), {n_att} attacchi "
           f"ciascuna, {N_RANDOM} watermark casuali per attacco, {time.time() - t0:.0f}s")
@@ -239,7 +257,8 @@ def main():
     plt.xlim(0, 1); plt.ylim(0, 1.01)
     plt.xlabel("False Positive Rate"); plt.ylabel("True Positive Rate")
     plt.title("ROC - fakebitinvestigation"); plt.legend(loc="lower right")
-    plt.savefig(os.path.join(HERE, "roc_fakebitinvestigation.png"), dpi=120, bbox_inches="tight")
+    plt.savefig(a.out, dpi=120, bbox_inches="tight")
+    print(f"curva salvata in {a.out}")
 
 
 if __name__ == "__main__":

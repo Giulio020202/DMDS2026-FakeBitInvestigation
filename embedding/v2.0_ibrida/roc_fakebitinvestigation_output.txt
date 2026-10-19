@@ -1,0 +1,12 @@
+
+101 immagini (71 calibrazione, 30 test), 40 attacchi ciascuna, 10 watermark casuali per attacco, 2243s
+CALIBRAZIONE: 2840 campioni H1, H0-R 28400, H0-A 2840, H0-B 2840; AUC (H0 insieme) = 0.99895
+  H0-R: media +0.0225, dev.std 0.0165, quantile 99.9% 0.0833, max 0.1050 -> soglia per FPR <= 0.001: 0.0835
+  H0-A: media +0.0257, dev.std 0.0175, quantile 99.9% 0.0839, max 0.0874 -> soglia per FPR <= 0.001: 0.0841
+  H0-B: media +0.0256, dev.std 0.0188, quantile 99.9% 0.0866, max 0.0951 -> soglia per FPR <= 0.001: 0.0867
+tau = massimo delle tre = 0.0867  ->  FPR H0-R 0.00046, H0-A 0.00035, H0-B 0.00070; TPR 0.9912, TPR sui soli attacchi con WPSNR >= 35: 0.9991
+TEST (tau congelata 0.0867): FPR H0-R 0.00058, H0-A 0.00000, H0-B 0.00000; TPR 0.9758, TPR sui soli attacchi con WPSNR >= 35: 0.9955
+  tau=0.080 (calibrazione): FPR H0-R 0.00148, H0-A 0.00176, H0-B 0.00352, TPR 0.9926
+  tau=0.086 (calibrazione): FPR H0-R 0.00049, H0-A 0.00070, H0-B 0.00141, TPR 0.9912
+  tau=0.090 (calibrazione): FPR H0-R 0.00021, H0-A 0.00000, H0-B 0.00035, TPR 0.9884
+  tau=0.100 (calibrazione): FPR H0-R 0.00004, H0-A 0.00000, H0-B 0.00000, TPR 0.9838

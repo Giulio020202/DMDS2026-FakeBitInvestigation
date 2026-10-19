@@ -41,8 +41,8 @@ N_BITS = 1024
 WAVELET = "db4"
 DWT_LEVELS = 4
 DWT_USE = (3, 4)
-TAU = 0.086                     # ROC (roc_fakebitinvestigation.py): 0.0830 a FPR 0.1%; alzata a 0.086 perche' anche i falsi
-                                # positivi realistici (altro gruppo / originale attaccata) restino sotto lo 0.1% (0.073%)
+TAU = 0.087                     # ROC (roc_fakebitinvestigation.py, run completa del 19/10): 0.0867 = la soglia piu' alta tra
+                                # H0-R 0.0835, H0-A 0.0841, H0-B 0.0867 (FPR <= 0.1% su ciascuno), arrotondata per eccesso
 SQ_WIN = 16                     # finestra (pixel) della pesatura spaziale
 SQ_EPS = 0.5                    # regolarizzazione della pesatura spaziale
 STRETCH = (510, 511, 513, 514)  # dimensioni intermedie del resize dei lab da compensare
