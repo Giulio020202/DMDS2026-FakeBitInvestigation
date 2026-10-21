@@ -4,27 +4,27 @@
 
 (15/10, aggiornato il 19/10 con la ROC completa, τ = 0,087, le risposte dei TA, gli attacchi e la demo, e il 21/10 con le risposte dei TA del 20/10, la prova sulle immagini distrutte e il test contro un gruppo vero della gara 2022. Il documento spiega da zero la versione che consegniamo, la v2.0: perché è fatta così, come funziona, il codice funzione per funzione, quanto è robusta e quali alternative abbiamo provato e scartato.)
 
-Come è organizzata la repo (riorganizzata il 21/10; fino ad allora era tutto in `fakebitinvestigation/v2.0_ibrida/`):
+Come è organizzata la repo:
 
 - `fakebitinvestigation/consegna/`: **i file da consegnare**, l'unica copia del codice:
   - `embedding_fakebitinvestigation.py`: la funzione `embedding(input1, input2)`;
   - `detection_fakebitinvestigation.py`: la funzione `detection(input1, input2, input3)`;
   - `roc_fakebitinvestigation.py`: il codice che calcola la soglia τ con la ROC (procedura di p.4 del regolamento); `roc_fakebitinvestigation.png` e `roc_fakebitinvestigation_output.txt` sono la curva e i numeri della run completa;
-  - `attacks_fakebitinvestigation.py`: **tutto** il nostro codice di attacco, in un solo file che funziona da solo: `attacks(input1, attack_name, param_array)` applica un attacco ammesso, anche in catena o in una zona; `attack_image(...)` cerca l'attacco più leggero che rompe un'immagine, usando la detection del gruppo attaccato come verifica (§A12). Fino al 21/10 la ricerca stava in un secondo file (`attacchi_fakebitinvestigation.py`): l'abbiamo riportata qui, perché il codice degli attacchi da consegnare deve essere completo in un file solo;
+  - `attacks_fakebitinvestigation.py`: **tutto** il nostro codice di attacco, in un solo file che funziona da solo: `attacks(input1, attack_name, param_array)` applica un attacco ammesso, anche in catena o in una zona; `attack_image(...)` cerca l'attacco più leggero che rompe un'immagine, usando la detection del gruppo attaccato come verifica (§A11);
   - `demo_fakebitinvestigation.py`: la demo che mostra come si usa ogni file;
   - `README.md`: istruzioni per eseguire tutto (per i TA);
 - `fakebitinvestigation/gara/`: quello che serve **il giorno della gara** e non si consegna: `ISTRUZIONI_GARA.md` (passo passo) e due **helper** che non contengono logica di embedding né di attacco, ma usano solo i file di `consegna/`: `difesa_fakebitinvestigation.py` (embedding delle 3 immagini a più target con `embedding()`, controlli con `detection()`, attacco contro noi stessi con `attack_image()`, calcolo dei punti) e `cerca_attacchi_fakebitinvestigation.py` (chiama `attack_image()` in parallelo su tutte le immagini scaricate e scrive il log Excel);
-- `fakebitinvestigation/documentazione/`: questo documento (`spiegazione_progetto.md`, prima `spiegazione_embedding.md`), i grafici e il sorgente della pagina sul test contro il gruppo 2022.
+- `fakebitinvestigation/documentazione/`: questo documento (`spiegazione_progetto.md` e il PDF generato con `genera_pdf.sh`), i grafici e il sorgente della pagina sul test contro il gruppo 2022.
 
-Risorse condivise nella cartella `fakebitinvestigation/`: il regolamento aggiornato (`documentazione/document.pdf`, insieme a tutti gli altri PDF), il watermark assegnato (`consegna/fakebitinvestigation.npy`: sta nella consegna perché serve all'embedding e alla demo, che così funziona con la sola cartella consegnata), le 101 immagini di esempio (`sample-images/`), le 3 immagini della gara 2022 (in `esperimenti/gruppo2022_smokeonthewatermark/challenge_imgs/`; fino al 21/10 c'era anche una copia in `gara2022/`) e, fino al 21/10, la cartella `esperimenti/`.
+Risorse condivise nella cartella `fakebitinvestigation/`: il regolamento aggiornato (`documentazione/document.pdf`, insieme a tutti gli altri PDF), il watermark assegnato (`consegna/fakebitinvestigation.npy`: sta nella consegna perché serve all'embedding e alla demo, che così funziona con la sola cartella consegnata), le 101 immagini di esempio (`sample-images/`) e 14 immagini mai usate per decidere (`set_c/`).
 
-**La cartella degli esperimenti** (`esperimenti/battery.py`, `adaptive.py`, `multi.py`, `h0.py`, `predict.py`, …, più le 3 immagini della gara 2022 e il codice del gruppo 2022 usato per il test della §A12), da cui vengono i numeri di questo documento e che il testo cita, l'abbiamo eliminata il 21/10 (tranne il set C di 14 immagini, che abbiamo tenuto in `set_c/` per le prove future): la logica è ormai fissata, e il codice da consegnare e quello per la gara non la usano (verificato rieseguendo tutto senza). Si recupera con `git checkout cc4c11d -- fakebitinvestigation/esperimenti fakebitinvestigation/gara2022`.
+Gli script degli esperimenti da cui vengono i numeri di questo documento (batteria fissa, attaccante adattivo, falsi positivi realistici, simulazione dei punti) non servono né alla consegna né alla gara e non sono più nella repo; si recuperano con `git checkout cc4c11d -- fakebitinvestigation/esperimenti`.
 
 ---
 
 # La versione 2.0 spiegata da zero
 
-## A0. Riassunto in 12 punti
+## A0. Riassunto in 11 punti
 
 1. Il watermark è una sequenza di **1024 bit** assegnata dai TA. La trasformiamo in **±1** (0 → −1, 1 → +1).
 2. Ogni bit viene scritto su una **coppia di coefficienti vicini**: al primo aumentiamo il modulo, al secondo lo diminuiamo (o il contrario se il bit è −1). Così gli attacchi che "alzano o abbassano tutto" (blur, sharpening, resize, contrasto) non cancellano il bit.
@@ -37,7 +37,6 @@ Risorse condivise nella cartella `fakebitinvestigation/`: il regolamento aggiorn
 9. A **58,05 dB** ci rompe solo il **17%** delle immagini (attacchi a 35,9 dB). Con le regole confermate dal TA (mai rotti = 6 punti + 2 di bonus; qualità sulla **media** delle 3 immagini) i **punti attesi** sono **11,10** a 58,05 dB contro **10,88** a 62,05 dB.
 10. Lo schema è il risultato di una selezione: le alternative che abbiamo provato (solo DCT, più bande, alta frequenza, maschere, schemi delle slide e dei lab) misurate **a parità di falsi positivi** pareggiano o peggiorano (§A9).
 11. Il nemico principale resta il **JPEG**, da solo o in catena con blur e mediano: 72 delle 73 immagini rotte a 62 dB cadono così.
-12. Un'idea per la detection, la "predizione dell'attacco" (sottrarre il danno del JPEG simulandolo sull'originale), è misurata nella §A10.1 ma l'abbiamo **abbandonata**: i TA la sconsigliano e la detection ha già pochi falsi positivi. Un'altra, la "soglia normalizzata" del Lab 4, l'abbiamo misurata e **scartata** (§A10.2).
 
 > 🗣 **In parole povere**: scriviamo lo stesso messaggio segreto due volte, con due "inchiostri" diversi, in punti dell'immagine che contano per l'occhio. Per cancellarlo un attaccante deve rovinare abbastanza l'immagine da finire nella fascia di qualità più bassa che il regolamento accetta (35–38 dB), che per noi vale comunque il punteggio massimo di robustezza.
 
@@ -356,6 +355,21 @@ Passo per passo:
 
 File: `detection_fakebitinvestigation.py`. È un **file unico**: contiene di nuovo il WPSNR dei lab e le stesse funzioni di selezione dell'embedding, copiate identiche (non importate, come vuole il regolamento).
 
+### A6.0 La logica, prima del codice
+
+La detection deve rispondere a una sola domanda: *nell'immagine attaccata c'è ancora il watermark che sta nella watermarkata?* Il watermark non lo conosce (il regolamento vieta di leggerlo dal file o di scriverlo nel codice), ma ha tre immagini, e da queste lo ricostruisce. I passi sono sei:
+
+1. **Lo "stampo", dall'originale.** Dall'originale ricalcoliamo esattamente le posizioni che ha scelto l'embedding: le 1024 coppie della DCT e le 1024 coppie della wavelet. Si può fare perché la scelta dipende **solo** dall'originale (le coppie con i coefficienti più grandi) e perché le costanti dei due file sono identiche.
+2. **Il watermark di riferimento, dalla watermarkata.** Confrontiamo la watermarkata con l'originale, coppia per coppia, con la formula della §A4.4: otteniamo `W_ext = a·w`, cioè il nostro watermark a meno di una scala, senza averlo mai letto.
+3. **Il watermark "sopravvissuto", dall'attaccata.** Facciamo la stessa misura sull'attaccata e otteniamo `W_att`. Se l'attacco non ha toccato il watermark, `W_att ≈ W_ext`. Se l'ha indebolito, `W_att ≈ g·W_ext + rumore`. Se l'immagine non c'entra (l'originale, un'immagine di un altro gruppo), `W_att` è rumore che non ha niente a che fare con `W_ext`.
+4. **Quanto si somigliano.** Calcoliamo il coseno tra `W_ext` e `W_att`. Vale 1 se il watermark è intatto, resta alto se è solo indebolito (il coseno non vede la scala `g`) e sta intorno a zero se il watermark non c'è. Nelle misure della ROC, sui casi senza il nostro watermark, la media è circa 0,02 e la deviazione standard 0,017–0,019 (§A7.2).
+5. **Più letture dell'attaccata.** L'attaccata non la leggiamo una volta sola ma sei: così com'è, "de-stirata" in quattro modi (contro il resize dei lab) e con una pesatura che ignora le zone devastate (contro gli attacchi localizzati). Teniamo il coseno **massimo**.
+6. **La decisione.** Il watermark è presente se il massimo è ≥ τ = 0,087. Il WPSNR tra watermarkata e attaccata viene calcolato e restituito (`output2`), ma non entra nella decisione.
+
+Perché il fatto di avere l'originale (detection **non-blind**) conta tanto: sottraendo l'originale togliamo di mezzo l'immagine stessa, che per uno spread spectrum è il "rumore" più grande. Quello che resta è solo il watermark più il danno dell'attacco. È anche il motivo per cui sull'originale l'estrazione dà un vettore nullo, e quindi "assente" con certezza.
+
+> 🗣 **In parole povere**: l'originale ci dice *dove* guardare, la watermarkata *cosa* dovremmo trovarci, l'attaccata *cosa* ci troviamo davvero. Se le ultime due "puntano nella stessa direzione" più di quanto succede per caso, il watermark c'è.
+
 ### A6.1 Le costanti
 
 ```python
@@ -450,7 +464,21 @@ def _score(reference, vecs):
     return max(_similarity(reference, y) for y in vecs)
 ```
 
-**Varianti 2–5, "de-stirare".** La funzione di resize dei lab rimpicciolisce e poi ingrandisce l'immagine; per alcune scale l'immagine intermedia esce di 510, 511, 513 o 514 pixel invece di 512, e il risultato finale è **stirato** di qualche millesimo. Uno stiramento così piccolo non si vede, ma sposta le frequenze e "desincronizza" le coppie. `_destretch` applica lo stiramento inverso (con `cv2.remap`) per ciascuna delle 4 dimensioni possibili. Misurato: resize del lab a scala 0,55 → similarità da 0,225 a 0,831.
+**Varianti 2–5, "de-stirare".** La funzione di resize dei lab rimpicciolisce e poi ingrandisce l'immagine; per alcune scale l'immagine intermedia esce di 510, 511, 513 o 514 pixel invece di 512, e il risultato finale è **stirato** di qualche millesimo. Uno stiramento così piccolo non si vede, ma sposta le frequenze e "desincronizza" le coppie. `_destretch` applica lo stiramento inverso per ciascuna delle 4 dimensioni possibili:
+
+```python
+def _destretch(img, m):
+    x = (np.arange(img.shape[0]) + 0.5) * m / img.shape[0] - 0.5
+    mx, my = np.meshgrid(x, x)
+    return cv2.remap(img.astype(np.float32), mx.astype(np.float32), my.astype(np.float32),
+                     cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE).astype(np.float64)
+```
+
+- se l'immagine intermedia aveva `m` pixel, il contenuto del pixel `i` è finito nella posizione `(i + 0,5)·m/512 − 0,5` dell'attaccata (il "+0,5/−0,5" serve a ragionare sui centri dei pixel);
+- `x` è proprio questa posizione, per ogni riga e ogni colonna; `cv2.remap` va a prendere ogni pixel lì, con un'interpolazione cubica;
+- ai bordi, dove la posizione cade fuori dall'immagine, si ripete l'ultimo pixel (`BORDER_REPLICATE`).
+
+Misurato: resize del lab a scala 0,55 → similarità da 0,225 a 0,831.
 
 **Variante 6, pesatura spaziale.** Un attacco localizzato (per esempio JPEG fortissimo solo sulle zone lisce) distrugge il watermark in una parte dell'immagine e lascia intatto il resto. Nell'estrazione normale la parte distrutta "inquina" tutto. Allora pesiamo ogni pixel della differenza `attaccata − originale` con
 
@@ -486,7 +514,7 @@ def detection(input1, input2, input3):
 5. `output2` = WPSNR tra watermarkata e attaccata, con il codice dei lab;
 6. `output1` = 1 se la similarità è ≥ τ, altrimenti 0.
 
-**Perché non c'è più il controllo sul WPSNR.** Fino al 13/10 la riga era `output1 = 1 if (sim >= TAU and output2 > 25) else 0`: sotto i 25 dB rispondevamo "assente" a prescindere. Il regolamento aggiornato lo vieta esplicitamente ("an if statement that skips detection or forces output1 based on the WPSNR is not allowed, including for severely degraded images"). Lo abbiamo tolto. La conseguenza misurata è nella §A7.5.
+**Perché non c'è un controllo sul WPSNR.** Il regolamento aggiornato lo vieta esplicitamente ("an if statement that skips detection or forces output1 based on the WPSNR is not allowed, including for severely degraded images"): la decisione dipende solo dalla similarità. La conseguenza misurata sulle immagini distrutte è nella §A7.5.
 
 > 🗣 **In parole povere**: la detection fa sempre il suo lavoro fino in fondo e risponde solo in base a quello che vede. Il WPSNR lo calcola e lo restituisce, ma non lo usa per decidere.
 
@@ -530,7 +558,7 @@ La curva è in `roc_fakebitinvestigation.png`.
 
 ### A7.3 Il controllo in più: falsi positivi "realistici"
 
-La ROC del regolamento usa watermark casuali, ma in gara i casi pericolosi sono altri. Per questo li misuriamo a parte (`esperimenti/h0_multi.py`, 104 immagini):
+La ROC del regolamento usa watermark casuali, ma in gara i casi pericolosi sono altri. Per questo li misuriamo a parte (104 immagini):
 
 | caso | n | media | quantile 99,9% | massimo |
 |---|---|---|---|---|
@@ -590,11 +618,108 @@ Il PDF elenca tra le penalità la detection che *"finds a watermark in destroyed
 
 Il motivo è sempre lo stesso: la similarità è un coseno, e il coseno non cambia se il watermark viene moltiplicato per un numero. Lo sharpening estremo **amplifica** il nostro watermark insieme a tutto il resto, quindi su un'immagine distrutta la similarità resta più alta di quella che hanno molti attacchi legali (JPEG, mediano).
 
-Abbiamo provato anche l'idea della nostra domanda: dire "assente" se il watermark estratto è amplificato più di 2 volte. Toglierebbe 412 casi su 475 e costerebbe un solo attacco valido su 1.713. L'abbiamo **scartata** lo stesso: è un modo diverso per riconoscere "immagine distrutta", cioè di fatto il controllo sul WPSNR che il regolamento vieta, riscritto in un'altra forma. E negherebbe un watermark che nell'immagine c'è davvero.
-
 **Decisione (21/10): τ resta 0,087** e la ROC resta quella del regolamento (H0-R, H0-A, H0-B). Alzare τ fino a 0,36–0,45 ci farebbe rompere molto più spesso, e probabilmente perderemmo più punti di robustezza dei 2 della penalità. Il rischio resta, ed è noto: se i TA provano la detection su un'immagine distrutta con uno sharpening estremo, la detection dice "presente". Il confronto in punti (penalità contro robustezza persa, con l'attaccante adattivo) è l'unica cosa che potrebbe farci cambiare idea, e per ora non l'abbiamo fatto.
 
 > 🗣 **In parole povere**: lo sharpening esagerato rovina l'immagine ma "alza il volume" anche del nostro watermark, che quindi si sente ancora benissimo. Per non sentirlo dovremmo diventare molto più duri d'orecchio, cioè alzare tanto la soglia, ma allora non sentiremmo il watermark nemmeno dopo attacchi normali. Preferiamo una detection onesta, che dice quello che c'è, e ci teniamo il rischio della penalità.
+
+### A7.6 Il codice della ROC, funzione per funzione
+
+File: `roc_fakebitinvestigation.py`. Non fa parte della detection (il regolamento vuole la soglia calcolata una volta sola, fuori), ma **importa** la detection e ne usa le funzioni interne: così la similarità della ROC è per costruzione la stessa che calcola la detection in gara.
+
+**Le costanti.**
+
+```python
+FPR_TARGET = 0.001      # FPR scelta per tau (il regolamento ammette [0, 0.1])
+N_RANDOM = 10           # watermark casuali per ogni attacco (campioni con label 0)
+SEED = 2026
+TEST_EVERY = 10         # indice % 10 >= 7 -> TEST (30%), le altre -> CALIBRAZIONE
+```
+
+- `FPR_TARGET = 0,001`: vogliamo al massimo un falso positivo su mille, molto più severo del 10% che il regolamento ammetterebbe, perché un falso positivo in gara costa una penalità;
+- `SEED`: tutti i numeri casuali (attacchi, watermark casuali) partono da qui, quindi la run è **riproducibile**: rilanciandola si ottengono gli stessi numeri;
+- `TEST_EVERY`: le immagini 7, 8, 9, 17, 18, 19, … (il 30%) vanno nel set di test; con le 101 immagini di esempio sono 71 di calibrazione e 30 di test.
+
+**Gli attacchi casuali: `random_attack`.** Le funzioni di attacco (`awgn`, `blur`, `sharpening`, `median`, `resizing`, `jpeg_compression`) sono quelle dei lab, con l'uscita arrotondata a interi 0–255 come un vero BMP. `random_attack` ne sceglie una a caso, con parametri casuali:
+
+| caso (probabilità 1/10 ciascuno) | parametri |
+|---|---|
+| JPEG | qualità 3–94 |
+| rumore AWGN | deviazione standard 1–30 |
+| blur | σ 0,3–3 |
+| sharpening | σ ∈ {0,5; 1; 2; 4; 10}, α 0,2–3 |
+| mediano (lab) | 3, 5, 7 o 9 |
+| resize (lab) | scala 0,2–0,95 |
+| rumore + blur | rumore 5–30, poi blur 0,5–2 |
+| blur + JPEG | blur 0,3–1,5, poi qualità 3–49 |
+| JPEG **localizzato** sulle zone lisce | qualità 2–19, sul 30–70% più liscio dell'immagine |
+| mediano (scipy) | 3, 5 o 7 |
+
+Il punto importante è che `random_attack` non restituisce un'immagine attaccata ma **una funzione**: la stessa funzione, con gli stessi parametri, si può applicare a immagini diverse. È quello che serve per H0-A e H0-B, dove vogliamo "lo stesso attacco" applicato all'originale e all'immagine di un altro gruppo.
+
+**Il lavoro su un'immagine: `_one_image`.** Per ogni immagine:
+
+```python
+watermarked = emb.embedding(path, watermark)
+...
+other = emb.embedding(path, other_wm)   # watermark casuale: un "altro gruppo"
+ctx = det._context(original)
+W_ext = det._extract(ctx, watermarked)
+half = W_ext.size // 2
+amp = np.array([np.sqrt(np.mean(W_ext[:half] ** 2)), np.sqrt(np.mean(W_ext[half:] ** 2))])
+for _ in range(n_att):
+    f, _ = random_attack(rng)
+    attacked = f(watermarked)
+    vecs = det._attacked_vectors(ctx, original, attacked)
+    scores.append(det._score(W_ext, vecs)); kinds.append('H1')
+    for _ in range(N_RANDOM):
+        r = rng.choice([-1.0, 1.0], half)
+        W_random = np.concatenate([amp[0] * r, amp[1] * r])
+        scores.append(det._score(W_random, vecs)); kinds.append('H0-R')
+    for kind, img in (('H0-A', original), ('H0-B', other)):
+        a = f(img)
+        scores.append(det._score(W_ext, det._attacked_vectors(ctx, original, a)))
+        kinds.append(kind)
+```
+
+1. fa l'embedding del nostro watermark e, a parte, di un watermark casuale (l'"altro gruppo", stesso schema);
+2. prepara lo stampo dall'originale e ricava `W_ext` dalla watermarkata, esattamente come la detection;
+3. per ogni attacco casuale:
+   - **H1**: attacca la watermarkata e calcola la similarità con `_score`, cioè il massimo sulle sei letture, come in gara;
+   - **H0-R**: 10 watermark casuali ±1. Ognuno viene messo "nella forma" di `W_ext`: lo stesso ±1 nella metà DCT e nella metà wavelet (come fa l'embedding con il watermark vero), ciascuna metà con la sua ampiezza media presa da `W_ext`. Così il watermark casuale è indistinguibile dal nostro tranne che per i bit;
+   - **H0-A**: lo stesso attacco applicato all'**originale**;
+   - **H0-B**: lo stesso attacco applicato all'immagine dell'**altro gruppo**;
+4. salva anche il WPSNR di ogni attacco, per poter contare a parte gli attacchi "validi" (≥ 35 dB).
+
+Con 40 attacchi per immagine si hanno, per ogni immagine, 40 casi H1, 400 H0-R, 40 H0-A e 40 H0-B.
+
+**La soglia: `_tau`.**
+
+```python
+def _tau(h0, fpr_target):
+    h0s = np.sort(h0)
+    m = int(np.floor(fpr_target * len(h0s)))
+    return float(np.nextafter(h0s[len(h0s) - m - 1], np.inf))
+```
+
+- ordina i punteggi "assente";
+- `m` è il numero massimo di falsi positivi ammessi: per esempio, su 2.840 casi H0-B con FPR 0,1% è 2;
+- τ è il valore appena sopra (`nextafter`) il (m+1)-esimo punteggio più alto: così al massimo `m` casi stanno sopra la soglia. È la soglia più bassa, quindi la più robusta, che rispetta il limite.
+
+**Il programma: `main`.**
+
+1. legge le opzioni (`--images`, `--watermark`, `--attacks`, `--quick`, `--out`);
+2. lancia `_one_image` su tutte le immagini **in parallelo** (un processo per core, meno uno), con una barra di avanzamento su stderr;
+3. divide i risultati in calibrazione e test in base all'indice dell'immagine;
+4. sulla calibrazione calcola una soglia per **ciascun** tipo di H0 e prende la **più alta**: deve valere per tutti e tre i casi insieme;
+5. con `roc_curve` di scikit-learn costruisce la curva ROC (tutti gli H0 insieme contro H1) e ne calcola l'area (AUC);
+6. stampa per ogni tipo media, deviazione standard, quantile 99,9%, massimo e soglia; poi FPR e TPR alla τ scelta, anche sui soli attacchi con WPSNR ≥ 35;
+7. sul **test** congela τ e misura soltanto: se i falsi positivi restano sotto lo 0,1% su immagini mai viste, la soglia non è "su misura" per quelle di calibrazione;
+8. per confronto stampa FPR e TPR a qualche soglia fissa (0,08; 0,086; 0,09; 0,10);
+9. salva la curva in un `.png` (matplotlib in modalità `Agg`: nessuna finestra).
+
+La run completa (101 immagini × 40 attacchi) ha impiegato 37 minuti; `--quick` (10 immagini × 5 attacchi) serve solo a vedere che tutto gira, e la τ che dà non è quella vera.
+
+> 🗣 **In parole povere**: il programma fa da "arbitro di prova". Mette il watermark, attacca a caso, e chiede alla detection (alle sue funzioni vere) quanto somiglia; poi fa le stesse domande su immagini dove il watermark **non** c'è. Con tutte queste risposte sceglie l'asticella e la verifica su immagini tenute da parte.
 
 ---
 
@@ -604,8 +729,8 @@ Abbiamo provato anche l'idea della nostra domanda: dire "assente" se il watermar
 
 Abbiamo misurato la robustezza contro due avversari, sulle stesse **104 immagini** (101 di esempio + 3 della gara 2022), sempre con la soglia scelta a FPR 0,1%:
 
-1. **Batteria fissa** (`esperimenti/battery.py`, 680 attacchi per immagine): tutti gli attacchi permessi, singoli e in catena, globali e localizzati, con parametri su una griglia fissa. Somiglia a un avversario "in regola", che sceglie gli attacchi guardando solo la watermarkata.
-2. **Attaccante adattivo** (`esperimenti/adaptive.py`): per ogni immagine cerca l'attacco **più leggero** che toglie il watermark. Per 13 famiglie di attacchi (JPEG, blur, rumore, mediano, resize e le catene più pericolose) scorre la forza dal più leggero al più forte e poi la raffina con una bisezione. Poi prova anche ad **attaccare solo le zone che servono**, restituendo all'immagine i blocchi 64×64 e 32×32 che non sono necessari. Usa la nostra detection come "oracolo" (in media circa 700 chiamate per immagine). **I TA hanno confermato (19/10) che usare l'esito della detection altrui per guidare gli attacchi è consentito**: quindi questo **non** è un caso peggiore teorico, è quello che un avversario ben attrezzato farà davvero in gara (noi compresi, §A12).
+1. **Batteria fissa** (680 attacchi per immagine): tutti gli attacchi permessi, singoli e in catena, globali e localizzati, con parametri su una griglia fissa. Somiglia a un avversario "in regola", che sceglie gli attacchi guardando solo la watermarkata.
+2. **Attaccante adattivo**: per ogni immagine cerca l'attacco **più leggero** che toglie il watermark. Per 13 famiglie di attacchi (JPEG, blur, rumore, mediano, resize e le catene più pericolose) scorre la forza dal più leggero al più forte e poi la raffina con una bisezione. Poi prova anche ad **attaccare solo le zone che servono**, restituendo all'immagine i blocchi 64×64 e 32×32 che non sono necessari. Usa la nostra detection come "oracolo" (in media circa 700 chiamate per immagine). **I TA hanno confermato (19/10) che usare l'esito della detection altrui per guidare gli attacchi è consentito**: quindi questo **non** è un caso peggiore teorico, è quello che un avversario ben attrezzato farà davvero in gara (noi compresi, §A12).
 
 > 🗣 **In parole povere**: la batteria fissa è un mazzo di chiavi sempre uguale. L'attaccante adattivo è uno scassinatore che prova, ascolta la serratura e lima la chiave. Se reggiamo contro lo scassinatore, reggiamo a maggior ragione contro chi ha solo il mazzo di chiavi.
 
@@ -629,7 +754,7 @@ Lettura:
 
 ### A8.3 I punti attesi, e perché 58 dB può convenire più di 62
 
-Simulazione (`esperimenti/adapt_points.py`): estraiamo a caso 3 immagini dalle 104 (20.000 volte), per ognuna prendiamo il miglior attacco riuscito trovato dall'attaccante adattivo, e applichiamo le regole: qualità sulla media del WPSNR, robustezza sul WPSNR medio degli attacchi riusciti, **6 + 2** se nessuna delle 3 viene rotta.
+Simulazione: estraiamo a caso 3 immagini dalle 104 (20.000 volte), per ognuna prendiamo il miglior attacco riuscito trovato dall'attaccante adattivo, e applichiamo le regole: qualità sulla media del WPSNR, robustezza sul WPSNR medio degli attacchi riusciti, **6 + 2** se nessuna delle 3 viene rotta.
 
 | target | rotte (adattivo) | WPSNR medio attacchi riusciti | punti qualità | **punti attesi totali** |
 |---|---|---|---|---|
@@ -658,7 +783,7 @@ Il target **non** si sceglie una volta per tutte: è un parametro di fine-tuning
 **Lo strumento (19/10): `difesa_fakebitinvestigation.py`.** Automatizza i punti 1–5. Per ogni immagine e ogni target (58,05 e 62,05):
 - fa l'embedding;
 - controlla che watermarkata → 1, originale → 0 e che la detection stia sotto i 5 s;
-- **attacca noi stessi** con la ricerca automatica dell'attacco (`attack_image()`, §A12), che è l'attaccante adattivo di §A8.1, al massimo 15 minuti per prova, 6 prove in parallelo.
+- **attacca noi stessi** con la ricerca automatica dell'attacco (`attack_image()`, §A11), che è l'attaccante adattivo di §A8.1, al massimo 15 minuti per prova, 6 prove in parallelo.
 
 Poi prova tutte le 8 combinazioni di target e stima i punti di difesa con la tabella del regolamento: qualità sulla media, robustezza sul WPSNR medio degli attacchi riusciti, 6 + 2 se nessuna immagine viene rotta. Stampa la riga `TARGET_BY_IMAGE` da copiare nell'embedding. Con `--final` rigenera le 3 immagini **con il codice così com'è**, le ricontrolla e le salva con il nome del regolamento. Così codice consegnato e immagini caricate coincidono.
 
@@ -692,50 +817,7 @@ Perché l'alta frequenza peggiora sempre: costa poco a noi (§A3) ma costa poco 
 
 ---
 
-## A10. Idee per la detection misurate ma NON nel codice consegnato
-
-### A10.1 Predizione dell'attacco nella detection
-
-**L'idea.** Il JPEG è deterministico: comprimendo l'**originale** con la stessa qualità, il "rumore" che il JPEG introduce sull'immagine è quasi lo stesso dell'attaccata. La detection potrebbe:
-
-1. provare a comprimere l'originale con qualità 1–100 (e qualche catena con blur e mediano) e tenere la versione più simile all'attaccata, usando **solo originale e attaccata**;
-2. sottrarla dall'attaccata: il rumore del JPEG si cancella e resta quasi solo il watermark;
-3. estrarre W_att da quello che resta e tenere il massimo con le varianti attuali.
-
-**Le misure.** Con l'attacco noto esattamente, un JPEG a qualità 5 (≈ 36 dB) passa da similarità 0,06–0,16 a 0,25–0,40. Con l'attacco stimato (versione veloce, `esperimenti/predict.py`): mediano 5 da 0,27–0,32 a 0,83–0,91; JPEG 4 da 0,09–0,13 a 0,30–0,31; mediano 3 + JPEG 6 da 0,11 a 0,27–0,31. Attacchi pensati apposta per ingannarla (rumore prima del JPEG, doppio JPEG, parametri fuori griglia) riducono il guadagno; per questo la detection terrebbe sempre il massimo con le varianti attuali.
-
-**Tempi e immagini distrutte** (misurati a CPU libera, un processo, 13 immagini): una chiamata a tutti i detector, predizione compresa, impiega **0,36 s** in media e **0,87 s** al massimo; sulle immagini distrutte (WPSNR ≤ 25) la detection con predizione dice "presente" in 31 casi su 88, contro 30 su 88 senza. **Risultato preliminare sulla robustezza** (detection con la sola parte DCT, 26 immagini della metà A, batteria v3 = 680 attacchi + 76 pensati apposta contro la predizione):
-
-| τ fissa | detection attuale | con predizione |
-|---|---|---|
-| 0,10 | 69% rotte, 37,21 dB | **23% rotte, 35,93 dB** |
-| 0,11 | 85% rotte, 37,57 dB | **42% rotte, 35,98 dB** |
-
-Con la predizione le immagini rotte scendono dal 69–85% al 23–42%, e quelle che cadono lo fanno a circa 36 dB invece di 37,2–37,6. L'attacco che la mette più in difficoltà è "rumore leggero + JPEG" (il rumore rende il JPEG non più prevedibile), come ci aspettavamo.
-
-**Attenzione: questi numeri sono a τ fissa, non a parità di falsi positivi.** Il massimo su più varianti alza un po' i valori casuali, quindi con la predizione τ andrà probabilmente alzata. Il test dei falsi positivi con la predizione non è ancora stato fatto, e va fatto (insieme alla stessa prova sulla v2.0) prima di decidere qualunque cosa.
-
-**Perché non è nel codice: abbandonata (19/10).** I TA, rispiegata l'idea, ce l'hanno **sconsigliata**: non è illecita, ma secondo loro può portarci problemi. Anche noi temevamo proprio i falsi positivi: il massimo su più varianti alza i valori casuali, e nel caso "originale attaccata" (H0-A) un attacco indovinato esattamente lascia un residuo quasi nullo, cioè puro rumore. Siccome la detection attuale ha già pochi falsi positivi (§A7.2), non vale il rischio di impantanarci. (Nota tecnica: la prima versione costava fino a 33 s per detection; quella veloce con OpenCV 0,36 s.)
-
-> 🗣 **In parole povere**: è come riconoscere una voce in una stanza rumorosa. Se sai esattamente che rumore c'è, perché puoi riprodurlo, lo togli e la voce si sente di nuovo.
-
-### A10.2 Soglia normalizzata (dal Lab 4)
-
-**L'idea.** Invece di "presente se coseno ≥ τ", usare "presente se coseno / σ ≥ τ", dove σ = √(Σ(xᵢ·yᵢ)²)/(‖x‖·‖y‖) è quanto ci si aspetta che il coseno "balli" per caso **su quella immagine**. Una sola τ per tutte, sul punteggio normalizzato.
-
-**Le misure** (104 immagini, batteria fissa, ciascuna soglia al quantile 99,9% dei falsi positivi realistici):
-
-| coseno (detection attuale) | punteggio normalizzato |
-|---|---|
-| 75% rotte, 36,92 dB (τ 0,0851) | 76% rotte, 36,94 dB (τ 3,82) |
-
-La differenza è di **una sola immagine** su 104. L'unico effetto è un margine più largo sull'originale, ma il coseno ce l'ha già positivo. **Scartata**: non vale la complessità in più (e una domanda in più ai TA).
-
-> 🗣 **In parole povere**: era un'idea elegante (un'asticella che si adatta a quanto è "rumorosa" ogni immagine), ma nei fatti la nostra similarità è già abbastanza stabile tra un'immagine e l'altra, e non cambia niente.
-
----
-
-## A11. Conformità al regolamento: checklist
+## A10. Conformità al regolamento: checklist
 
 | controllo | esito |
 |---|---|
@@ -759,31 +841,163 @@ La differenza è di **una sola immagine** su 104. L'unico effetto è un margine 
 
 ---
 
-## A12. Come si usa, e la strategia di attacco
+## A11. Gli attacchi: logica e codice, funzione per funzione
 
-Le istruzioni complete per eseguire tutto (anche per i TA) sono in `README.md`. Il modo più rapido per vedere tutto in azione è la demo:
+File: `attacks_fakebitinvestigation.py`. Contiene **tutto** il nostro codice di attacco e funziona da solo: non importa altri file nostri, e l'unica funzione "esterna" è il WPSNR dei lab, copiato dentro come nella detection.
 
-```bash
-python demo_fakebitinvestigation.py          # embedding + detection + 11 attacchi d'esempio (~15 s)
-python demo_fakebitinvestigation.py --attacchi   # + la ricerca automatica dell'attacco contro la nostra detection (~5 min)
+### A11.1 La logica
+
+Nella fase di attacco riceviamo, per ogni gruppo, le loro 3 immagini watermarkate, gli originali e la loro detection. Per ogni immagine vogliamo l'attacco che toglie il watermark **lasciando l'immagine il più bella possibile** (WPSNR più alto): vale di più per noi (punti di qualità degli attacchi) e meno per loro.
+
+Lo schema degli altri non lo conosciamo, ma abbiamo la loro detection, che ci dice "presente" o "assente". I TA hanno confermato (19/10 e 20/10) che possiamo usarla per guidare gli attacchi; quello che il regolamento vieta è usare l'**originale** per costruire l'attacco (per esempio calcolare `watermarkata − originale`). Per questo nel nostro codice l'originale non viene mai letto: il suo percorso viene passato soltanto alla loro detection, come suo `input1`. Le zone per gli attacchi localizzati le calcoliamo dalla sola watermarkata.
+
+La strategia, dal generale al particolare:
+
+1. **famiglie di attacchi** ammessi (singoli e in catena), ognuna con una "manopola" di forza;
+2. per ogni famiglia, la **forza minima** che rompe, trovata con pochi tentativi (ricerca binaria più un raffinamento);
+3. le stesse famiglie **solo dentro una zona** dell'immagine (fuori resta la watermarkata intatta, quindi il WPSNR sale);
+4. sul migliore trovato, il **greedy a blocchi**: si restituiscono alla watermarkata, un blocco alla volta, tutte le parti che non servono a rompere;
+5. si salva il riuscito con il WPSNR più alto.
+
+> 🗣 **In parole povere**: è il lavoro di uno scassinatore paziente. Prova i grimaldelli dal più delicato al più robusto, si ferma al primo che apre, e poi lima via tutto il superfluo, controllando ogni volta che la serratura si apra ancora. La "serratura" è la detection degli altri, che ci dice solo "aperto" o "chiuso".
+
+### A11.2 Gli attacchi base e la funzione `attacks`
+
+Le funzioni base sono quelle dei lab con due differenze, necessarie per lavorare su interi 0–255 come un vero BMP: l'ingresso diventa `float` prima di blur e sharpening (con gli interi lo sharpening del lab va in overflow) e l'uscita di ogni attacco è arrotondata e saturata a 0–255.
+
+| nome | parametri | cosa fa |
+|---|---|---|
+| `'awgn'` | `[std, seed]` | rumore gaussiano; il seme (facoltativo, default 123) rende l'attacco riproducibile |
+| `'blur'` | `[sigma]` | filtro gaussiano; con una coppia `(sy, sx)` è un blur anisotropo (più forte in una direzione) |
+| `'sharp'` | `[sigma, alpha]` | unsharp masking: `img + alpha·(img − blur(img, sigma))` |
+| `'jpeg'` | `[QF]` | compressione JPEG con qualità 1–100 (Pillow) |
+| `'resize'` | `[scale, metodo]` | rimpicciolisce di `scale` e torna a 512×512; metodo `'lab'` (default, quello dei lab con skimage) oppure `'cubic'`, `'linear'`, `'area'` (OpenCV) |
+| `'median'` | `[k]` | mediano k×k (o `(ky, kx)`), bordi riflessi |
+
+```python
+def attacks(input1, attack_name, param_array, mask=None):
+    wm = cv2.imread(input1, 0) if isinstance(input1, str) else np.asarray(input1, dtype=np.uint8)
+    if isinstance(attack_name, str):
+        names, params = [attack_name], [param_array]
+    else:
+        names, params = list(attack_name), list(param_array)
+    ...
+    out = wm
+    for name, p in zip(names, params):
+        if name not in ATTACKS:
+            raise ValueError(f"attacco non ammesso: {name!r} ...")
+        out = ATTACKS[name](out, list(p))
+    if mask is not None:
+        loc = wm.copy()
+        loc[mask] = out[mask]
+        out = loc
+    return out
 ```
 
-**Gli attacchi** (`attacks_fakebitinvestigation.py`). La funzione `attacks(input1, attack_name, param_array, mask=None)` applica:
-- un attacco tra quelli ammessi (`'awgn'`, `'blur'`, `'sharp'`, `'jpeg'`, `'resize'`, `'median'`);
-- oppure una catena, se `attack_name` è una lista;
-- solo dentro una zona, se le si passa una maschera.
+- è la struttura d'esempio del regolamento (`attacks(input1, attack_name, param_array)`), con un argomento facoltativo in più, la maschera;
+- `input1` può essere un percorso o un'immagine già letta (la ricerca automatica lavora in memoria);
+- se `attack_name` è una **lista**, gli attacchi vengono applicati in catena, nell'ordine dato (per esempio `["blur", "jpeg"], [[0.6], [12]]`);
+- qualunque nome fuori dai sei ammessi fa scattare un errore: è impossibile, anche per sbaglio, usare un attacco non permesso;
+- con la `mask` l'attacco resta solo dove la maschera è vera; fuori si rimette la watermarkata.
 
-Le maschere (zone lisce, zone testurizzate, bordi, blocchi 8×8 allineati al JPEG) sono calcolate **solo dalla watermarkata**.
+### A11.3 Le zone: `smooth_mask`, `textured_mask`, `edge_mask`, `smooth_blocks8_mask`
 
-**La ricerca automatica dell'attacco** (`attack_image()`, nello stesso file `attacks_fakebitinvestigation.py`; da riga di comando `python attacks_fakebitinvestigation.py cerca …`). Nella fase di attacco, per ogni immagine di ogni gruppo cerca l'attacco **più leggero** che toglie il watermark, cioè quello con il WPSNR più alto, che vale più punti:
-1. 25 famiglie di attacchi (singoli e catene, le stesse che contro di noi sono risultate più efficaci, §A8.2), ognuna con un parametro di forza dal più leggero al più forte;
-2. un WPSNR veloce (FFT, identico a quello dei lab: verificato) scarta senza chiamare la detection tutto ciò che va sotto i 35 dB;
-3. la detection del gruppo attaccato fa da "oracolo" (ammesso dai TA). Una ricerca binaria trova la forza minima che rompe, poi un raffinamento: circa 8 chiamate per famiglia;
-4. le stesse famiglie solo dentro 7 zone: fuori dalla zona l'immagine resta intatta, quindi dentro si può andare più forte restando sopra i 35 dB;
-5. dal migliore, si restituiscono alla watermarkata i blocchi 64×64 e 32×32 che non servono a rompere (come l'attaccante adattivo, §A8.1), guardando l'esito della detection altrui. Ce l'eravamo chiesti perché il PDF vieta l'originale per "localizzare": i TA hanno confermato (19/10) che è **ammesso**. Si salta con `--no-greedy`;
-6. si tiene il riuscito con il WPSNR più alto, lo si salva con il nome richiesto e si scrive il log per Excel (Image | Group | WPSNR | Attack(s)).
+Tutte le zone si calcolano **dalla sola watermarkata**:
 
-Prova contro la nostra stessa detection (immagine 0000 a 62,05 dB, τ 0,087): rotta a **36,17 dB** con mediano 3 + JPEG 7 + zone, 514 chiamate, 5,5 minuti. È lo stesso tipo di attacco che l'attaccante adattivo aveva trovato contro di noi (§A8.2).
+- `_block_std` calcola, per ogni pixel, la deviazione standard dei livelli di grigio in una finestra intorno (16×16): bassa nelle zone lisce, alta nelle texture;
+- `smooth_mask(wm, q)`: la frazione `q` più liscia dell'immagine. Contro di noi i migliori attacchi localizzati erano proprio sulle zone lisce, dove il JPEG fa più danni al watermark costando poco in WPSNR;
+- `textured_mask(wm, q)`: la frazione `q` più testurizzata;
+- `edge_mask(wm, q)`: la frazione `q` con i bordi più forti (gradiente di Sobel, poi sfumato);
+- `smooth_blocks8_mask(wm, q)`: come le zone lisce, ma fatta di blocchi 8×8 interi allineati alla griglia del JPEG, così un JPEG localizzato non lascia blocchi "a metà".
+
+Le zone usate dalla ricerca sono 7, in ordine di efficacia: lisce 50%, lisce 70%, lisce a blocchi 50%, lisce 30%, texture 50%, texture 30%, bordi 30%.
+
+### A11.4 Le famiglie: `FAMILIES`
+
+Ogni famiglia è descritta da quattro cose:
+
+```python
+"blur0.6+jpeg": (["blur", "jpeg"], lambda p: [[0.6], [p]], QF[:-1], "int"),
+```
+
+1. la **catena** di attacchi (`blur` e poi `jpeg`);
+2. come la forza `p` diventa i parametri (qui `p` è la qualità del JPEG, il blur è fisso a 0,6);
+3. la **griglia** delle forze, **dalla più leggera alla più forte** (per il JPEG: qualità 95, 90, 80, … fino a 2);
+4. come raffinare tra due valori della griglia: `'int'` (qualità intere), `'float'`, `'float-down'` (per il resize, dove più forte vuol dire scala più piccola) oppure `'none'` (solo i valori della griglia, per esempio i mediani, che hanno senso solo dispari).
+
+Le famiglie sono 25: prima le catene con il JPEG (JPEG + blur, blur + JPEG, mediano + JPEG, rumore + JPEG, resize + JPEG, doppio JPEG…), che contro di noi erano quasi sempre gli attacchi vincenti (§A8.2); poi blur, mediano, resize nei vari metodi, rumore, le combinazioni con lo sharpening e le versioni anisotrope (blur e mediano solo orizzontali o solo verticali). Con le 7 zone le combinazioni da provare sono 25 + 25 × 7 = 200, nell'ordine: prima tutte le famiglie sull'immagine intera, poi zona per zona.
+
+### A11.5 Il WPSNR veloce: `wpsnr_fast`
+
+Il WPSNR dei lab filtra l'errore con una convoluzione 41×41 (`convolve2d` con bordo `wrap`), che è lenta. Ma una convoluzione con bordo "a ciclo" è esattamente una moltiplicazione nel dominio di Fourier: `wpsnr_fast` calcola una volta sola la FFT del filtro (centrato e allargato a 512×512) e poi, per ogni immagine, moltiplica le FFT invece di convolvere. Il risultato è lo stesso del codice dei lab (verificato), ma molto più veloce.
+
+Serve solo a **scartare** in fretta i candidati che finirebbero sotto i 35 dB, senza disturbare la detection degli altri. Il valore che finisce nel log è sempre ricalcolato con `wpsnr()`, la copia identica di quello dei lab.
+
+### A11.6 L'oracolo: la classe `Oracle`
+
+Avvolge la detection del gruppo attaccato:
+
+- **la carica** dal file `.py` con `importlib`, zittendo qualunque stampa al caricamento, e controlla che definisca `detection()`;
+- `broken(att)` risponde "l'attacco ha funzionato?": salva l'immagine attaccata in un BMP temporaneo (così la detection la legge esattamente come leggerà quella caricata) e chiama `detection(originale, watermarkata, attaccata)`. Rotta se `output1 == 0`;
+- mette un **timeout** a ogni chiamata (10 s di default, con un segnale di sistema): una detection bloccata non blocca noi;
+- **un errore o un timeout contano come "non rotta"**: per prudenza non carichiamo mai un attacco di cui non siamo sicuri. Dopo 3 errori di fila l'immagine viene saltata e segnalata;
+- tiene una **cache**: se la stessa immagine è già stata provata, risponde senza richiamare la detection.
+
+### A11.7 La ricerca in una famiglia: `search`
+
+```python
+valid = []
+for p in grid:                                   # 1. solo le forze sopra i 35 dB
+    if wpsnr_fast(wm, make(p)) < MIN_WPSNR:
+        break
+    valid.append(p)
+if not valid or not oracle.broken(make(valid[-1])):
+    return None
+lo_i, hi_i = -1, len(valid) - 1                  # 2. ricerca binaria
+while hi_i - lo_i > 1:
+    mid = (lo_i + hi_i) // 2
+    if oracle.broken(make(valid[mid])):
+        hi_i = mid
+    else:
+        lo_i = mid
+best = valid[hi_i]
+# 3. raffinamento tra valid[lo_i] (non rompe) e best (rompe)
+```
+
+1. **Filtro sul WPSNR.** Scorre la griglia dal più leggero al più forte e si ferma al primo valore che scende sotto i 35 dB: un attacco lì sotto non vale, inutile provarlo. Poi prova il più forte rimasto: se nemmeno quello rompe, la famiglia viene abbandonata con **una sola** chiamata alla detection.
+2. **Ricerca binaria.** Assumendo che un attacco più forte rompa più facilmente, dimezza ogni volta l'intervallo tra "l'ultimo che non rompe" e "il primo che rompe".
+3. **Raffinamento.** Tra i due valori della griglia cerca qualcosa di ancora più leggero: per il JPEG prova le qualità intere dalla più alta in giù e si ferma alla prima che rompe; per le forze continue fa 3 passi di bisezione.
+
+In media sono circa 8 chiamate alla detection per famiglia. Restituisce il WPSNR (con il codice dei lab), la catena e i parametri.
+
+### A11.8 Il greedy a blocchi: `greedy_blocks`
+
+Parte dal migliore attacco trovato e lo "ritaglia":
+
+1. divide l'immagine in blocchi 64×64 e tiene solo quelli in cui l'attacco ha cambiato qualcosa;
+2. li ordina dal **più modificato** al meno modificato, perché sono quelli che costano di più in WPSNR;
+3. per ogni blocco prova a rimetterci la watermarkata: se la detection dice ancora "assente", il blocco resta restituito, altrimenti si torna indietro;
+4. rifà tutto con blocchi 32×32.
+
+Il risultato è un attacco che tocca solo le zone indispensabili, quindi con un WPSNR più alto. La funzione restituisce anche la maschera `keep` dei blocchi in cui l'attacco è rimasto: la salviamo come PNG, così l'attacco è riproducibile (attacco di base, poi watermarkata fuori dai blocchi bianchi). I TA hanno confermato (19/10) che usare la loro detection per scegliere le zone è ammesso.
+
+### A11.9 Il regista: `attack_image`
+
+`attack_image(wm_path, orig_path, det_path, out_dir, budget=600, use_greedy=True, timeout=10)` attacca **una** immagine dall'inizio alla fine:
+
+1. dal nome `<gruppo>_<immagine>.bmp` ricava il gruppo e il nome dell'immagine, e controlla che sia una 512×512 leggibile;
+2. crea l'oracolo e fa un **controllo iniziale**: sulla watermarkata non attaccata la loro detection deve dire "presente", altrimenti c'è qualcosa che non va (file sbagliati, detection difettosa) e non attacchiamo;
+3. divide il tempo: il 75% del `budget` alla ricerca, il resto al greedy (tutto alla ricerca con `--no-greedy`);
+4. calcola le 7 zone dalla watermarkata e prova le 200 combinazioni famiglia × zona con `search`, finché c'è tempo, raccogliendo tutti gli attacchi riusciti;
+5. sul migliore lancia `greedy_blocks` e, se rompe ancora, lo aggiunge ai candidati;
+6. ordina i candidati per WPSNR decrescente e salva il **primo che, ricontrollato, è ancora ≥ 35 dB e rompe davvero**, con il nome del regolamento `fakebitinvestigation_<gruppo>_<immagine>.bmp` (più il PNG delle zone, se viene dal greedy);
+7. restituisce un riassunto (WPSNR, descrizione dell'attacco, numero di chiamate, errori, tempo) e **non solleva mai eccezioni**: un problema con un'immagine non deve fermare la gara.
+
+**La descrizione per il log** la scrive `describe()`, nello stile dell'esempio del regolamento: `Blur sigma=0.6, JPEG QF=12 (solo zona lisce50, calcolata dalla watermarkata)`.
+
+**Da riga di comando** il file ha due comandi: `applica` (un attacco o una catena su un'immagine, salvata, con il WPSNR stampato) e `cerca` (la ricerca automatica su una sola immagine, con `--budget`, `--timeout` e `--no-greedy`).
+
+### A11.10 Il giorno della gara e le prove
 
 **Protezioni per il giorno della gara.** Le detection degli altri gruppi sono codice che non conosciamo, quindi la ricerca (e l'helper di gara che la lancia su tutte le immagini, `../gara/cerca_attacchi_fakebitinvestigation.py`):
 - mette un **timeout** su ogni chiamata (10 s);
@@ -835,6 +1049,17 @@ Questi numeri misurano i **tempi** dello script e, di riflesso, quanto un attacc
 I due test non sono simmetrici: il primo è il nostro motore completo con zone e oracolo, il secondo solo attacchi globali. Contro il nostro stesso motore venivamo rotti in 18 immagini su 27, a 36,5 dB (simulazione qui sopra). E loro hanno circa 4,5 dB di energia in più nell'embedding (3 punti di qualità contro i nostri 5). Una pagina riassuntiva è in `documentazione/test_gruppo2022.pdf`.
 
 > 🗣 **In parole povere**: il nostro script funziona anche su un watermark costruito in modo completamente diverso dal nostro, e lo rompe quasi sempre restando sopra i 38 dB. Noi, attaccati con i loro strumenti, cadiamo meno spesso e solo a WPSNR bassi, cioè nella fascia che ci dà il massimo dei punti di robustezza.
+
+---
+
+## A12. Come si usa
+
+Le istruzioni complete per eseguire tutto (anche per i TA) sono in `README.md`. Il modo più rapido per vedere tutto in azione è la demo:
+
+```bash
+python demo_fakebitinvestigation.py   # embedding + detection + 11 attacchi d'esempio (~15 s)
+python demo_fakebitinvestigation.py --attacchi   # + ricerca automatica dell'attacco (~5 min)
+```
 
 Per lanciare i singoli file a mano, dalla cartella `fakebitinvestigation/consegna/` con l'ambiente Python del progetto attivo (`source ../../OFF_MDS_ENV/bin/activate`):
 
@@ -906,7 +1131,7 @@ Chi ci rompe deve scendere quasi sempre sotto i 38 dB, nella fascia che per noi 
 
 Le differenze tra le versioni sono di pochi centesimi di punto; scendere a 58,05 dB vale circa +0,2 punti (contro **un** avversario simulato).
 
-### A14.3 La fase di attacco e i tempi (§A12, §A11)
+### A14.3 La fase di attacco e i tempi (§A11, §A10)
 
 ![Simulazione della ricerca automatica dell'attacco](grafici/g7_simulazione_attacco.png)
 
