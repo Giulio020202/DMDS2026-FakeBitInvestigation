@@ -1,5 +1,8 @@
 """
-Capture the Mark 2026 - aiuto per la FASE DI DIFESA del giorno della gara (gruppo fakebitinvestigation)
+Capture the Mark 2026 - HELPER per la FASE DI DIFESA del giorno della gara (gruppo fakebitinvestigation). NON si consegna.
+
+Non contiene logica di embedding ne' di attacco: usa embedding(), detection() e attack_image() dei file
+consegnati (../consegna/) e cambia al massimo il parametro TARGET_WPSNR (fine-tuning ammesso).
 
 Serve a scegliere il target di WPSNR di ciascuna delle 3 immagini (es. 58.05 o 62.05 dB) e a produrre
 le immagini da caricare. Lavora solo sulle NOSTRE immagini con la NOSTRA detection.
@@ -8,7 +11,7 @@ Modalita' 1 - PROVA (default):
   per ogni immagine e ogni target:
     - embedding a quel target;
     - controlli: watermarkata -> 1, originale -> 0, tempo della detection;
-    - lo stesso attacco dello script di attacco (attacchi_fakebitinvestigation.py) contro la nostra detection:
+    - lo stesso attacco che usiamo in gara (attack_image() di attacks_fakebitinvestigation.py) contro la nostra detection:
       e' un avversario forte che cerca l'attacco piu' leggero che ci rompe.
   Poi prova tutte le combinazioni di target e stima i punti di difesa con la tabella del regolamento:
     - qualita' sulla MEDIA dei WPSNR delle 3 immagini (risposta dei TA);
@@ -22,10 +25,10 @@ Modalita' 2 - FINALE (--final):
   cosi' com'e' (nessun parametro passato da qui), controlla WPSNR e detection e salva in <out>/upload/
   le immagini da caricare con il nome del regolamento: fakebitinvestigation_<imageName>.bmp.
 
-Uso (da v2.0_ibrida/):
-  python difesa_fakebitinvestigation.py --images DIR_CON_LE_3_IMMAGINI --out DIR [--targets 58.05 62.05]
-                                        [--budget SECONDI] [--procs N]
-  python difesa_fakebitinvestigation.py --images DIR_CON_LE_3_IMMAGINI --out DIR --final
+Uso (da consegna/, come tutti i comandi della gara):
+  python ../gara/difesa_fakebitinvestigation.py --images DIR_CON_LE_3_IMMAGINI --out DIR [--targets 58.05 62.05]
+                                                [--budget SECONDI] [--procs N]
+  python ../gara/difesa_fakebitinvestigation.py --images DIR_CON_LE_3_IMMAGINI --out DIR --final
 """
 import argparse
 import itertools
@@ -38,13 +41,14 @@ import cv2
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)
+CONSEGNA = os.path.join(HERE, "..", "consegna")   # il codice e' quello consegnato: una sola copia, nessun doppione
+sys.path.insert(0, CONSEGNA)
 import embedding_fakebitinvestigation as emb                             # noqa: E402
 from detection_fakebitinvestigation import TAU, detection, wpsnr        # noqa: E402
-from attacchi_fakebitinvestigation import attack_one                        # noqa: E402
+from attacks_fakebitinvestigation import attack_image                   # noqa: E402
 
 GROUP = "fakebitinvestigation"
-DETECTION = os.path.join(HERE, "detection_fakebitinvestigation.py")
+DETECTION = os.path.join(CONSEGNA, "detection_fakebitinvestigation.py")
 
 
 def quality_points(w):
@@ -59,6 +63,12 @@ def robustness_points(w):
         if w < hi:
             return pts
     return 0
+
+
+def _attack(job):
+    """Un'immagine contro la nostra detection: tutto il lavoro lo fa attack_image() del file degli attacchi."""
+    fname, det_path, orig_path, wm_path, out_dir, budget, use_greedy, timeout = job
+    return attack_image(wm_path, orig_path, det_path, out_dir, budget, use_greedy, timeout)
 
 
 def checks(orig_path, wm_path):
@@ -82,7 +92,7 @@ def embed_to(orig_path, wm_file, target, out_path):
 def main():
     ap = argparse.ArgumentParser(description="Fase di difesa: scelta dei target e immagini da caricare")
     ap.add_argument("--images", required=True, help="cartella con le 3 immagini originali scaricate")
-    ap.add_argument("--watermark", default=os.path.join(HERE, "..", "fakebitinvestigation.npy"))
+    ap.add_argument("--watermark", default=os.path.join(CONSEGNA, "fakebitinvestigation.npy"))
     ap.add_argument("--out", required=True)
     ap.add_argument("--targets", type=float, nargs="+", default=[58.05, 62.05])
     ap.add_argument("--budget", type=float, default=900, help="secondi di attacco per immagine e target (default 15 min)")
@@ -136,7 +146,7 @@ def main():
     print(f"\n=== attacco contro di noi: {len(jobs)} prove, {a.budget / 60:.0f} min ciascuna al massimo ===", flush=True)
     res = {}
     with Pool(max(1, min(a.procs, len(jobs)))) as p:
-        for r in p.imap_unordered(attack_one, jobs):
+        for r in p.imap_unordered(_attack, jobs):
             name, t = r["image"], float(r["group"][1:])
             res[(name, t)] = r["wpsnr"]                       # None = non rotta
             esito = f"ROTTA a {r['wpsnr']:.2f} dB con {r['desc']}" if r["wpsnr"] else "non rotta"
@@ -160,7 +170,7 @@ def main():
     print("\nProposta (da valutare: un solo avversario simulato, in gara sono 9). Riga per l'embedding:")
     print(f"  TARGET_BY_IMAGE = {mapping}")
     print("La detection NON va toccata (tau non dipende dal target). Poi:\n"
-          f"  python difesa_fakebitinvestigation.py --images {a.images} --out {a.out} --final")
+          f"  python ../gara/difesa_fakebitinvestigation.py --images {a.images} --out {a.out} --final")
 
 
 if __name__ == "__main__":

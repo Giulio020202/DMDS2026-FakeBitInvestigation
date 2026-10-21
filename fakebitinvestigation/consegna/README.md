@@ -1,6 +1,6 @@
 # Capture the Mark 2026 — gruppo `fakebitinvestigation`
 
-Versione consegnata: **2.0 ibrida (DCT + wavelet)**. La spiegazione completa dell'algoritmo è in `spiegazione_embedding.md`.
+Versione consegnata: **2.0 ibrida (DCT + wavelet)**. La spiegazione completa dell'algoritmo è in `../documentazione/spiegazione_progetto.md` (in PDF: `../documentazione/spiegazione_progetto.pdf`).
 
 ## File
 
@@ -8,16 +8,15 @@ Versione consegnata: **2.0 ibrida (DCT + wavelet)**. La spiegazione completa del
 |---|---|---|
 | `embedding_fakebitinvestigation.py` | inserisce il watermark | `embedding(input1, input2) -> output1` |
 | `detection_fakebitinvestigation.py` | dice se il watermark c'è ancora | `detection(input1, input2, input3) -> output1, output2` |
-| `attacks_fakebitinvestigation.py` | i nostri attacchi (solo quelli ammessi) | `attacks(input1, attack_name, param_array, mask=None) -> output1` |
-| `attacchi_fakebitinvestigation.py` | script di attacco: cerca l'attacco più leggero che rompe ogni immagine | riga di comando |
+| `attacks_fakebitinvestigation.py` | **tutto** il nostro codice di attacco (solo attacchi ammessi): un attacco, una catena o un attacco localizzato; la ricerca automatica dell'attacco più leggero che rompe un'immagine | `attacks(input1, attack_name, param_array, mask=None) -> output1`, `attack_image(...)`, riga di comando |
 | `roc_fakebitinvestigation.py` | ROC e soglia τ della detection | riga di comando |
 | `demo_fakebitinvestigation.py` | mostra come usare tutti i file qui sopra | riga di comando |
-| `difesa_fakebitinvestigation.py` | fase di difesa: prova dei target contro un attaccante forte, immagini da caricare | riga di comando |
-| `ISTRUZIONI_GARA.md` | cosa fare passo passo il giorno della gara (difesa e attacco) | — |
 | `roc_fakebitinvestigation.png` | curva ROC della run completa | — |
 | `roc_fakebitinvestigation_output.txt` | numeri stampati dalla run completa della ROC | — |
 
-Risorse nella cartella superiore (`../`): `fakebitinvestigation.npy` (il nostro watermark), `sample-images/` (101 immagini BMP 512×512 in grigi).
+In questa cartella ci sono anche `fakebitinvestigation.npy` (il nostro watermark, serve all'embedding come `input2`; la detection non lo legge) e `immagini_demo/` (10 immagini BMP 512×512 in grigi, usate dalla demo): **la cartella funziona da sola**. Per la ROC completa servono le 101 immagini di esempio del corso: per default lo script le cerca in `../sample-images/` (altrimenti usa `immagini_demo/`), oppure si indicano con `--images`.
+
+Per il giorno della gara (non fanno parte della consegna) ci sono `../gara/ISTRUZIONI_GARA.md` (cosa fare passo passo, difesa e attacco), `../gara/difesa_fakebitinvestigation.py` (prova dei target contro un attaccante forte e preparazione delle immagini da caricare) e `../gara/cerca_attacchi_fakebitinvestigation.py` (attacca in parallelo tutte le immagini scaricate e scrive il log). Sono solo helper: non contengono logica di embedding né di attacco, usano i file di questa cartella.
 
 ## Requisiti
 
@@ -28,15 +27,15 @@ Per attacchi, ROC e demo servono anche `pillow`, `scikit-image`, `scikit-learn`,
 pip install numpy scipy opencv-python PyWavelets pillow scikit-image scikit-learn matplotlib
 ```
 
-Tutti i comandi qui sotto si lanciano **dalla cartella `v2.0_ibrida/`**.
+Tutti i comandi qui sotto si lanciano **da questa cartella (`consegna/`)**.
 
 ## Demo (consigliata come primo passo)
 
 ```bash
 python demo_fakebitinvestigation.py                 # embedding + detection + 11 attacchi d'esempio (~15 s)
-python demo_fakebitinvestigation.py --attacchi          # + script di attacco contro la nostra detection (~6 min)
+python demo_fakebitinvestigation.py --attacchi          # + ricerca automatica dell'attacco (attack_image) contro la nostra detection (~5 min)
 python demo_fakebitinvestigation.py --roc           # + ROC veloce (solo per vedere che gira)
-python demo_fakebitinvestigation.py --image ../sample-images/0042.bmp --out /tmp/demo
+python demo_fakebitinvestigation.py --image immagini_demo/0004.bmp --out /tmp/demo
 ```
 
 Stampa, per ogni caso, `output1`, `output2` (WPSNR), il tempo della detection e l'esito. Tutte le immagini prodotte finiscono in `demo_output/`.
@@ -45,7 +44,7 @@ Stampa, per ogni caso, `output1`, `output2` (WPSNR), il tempo della detection e 
 
 ```python
 from embedding_fakebitinvestigation import embedding
-wm = embedding("../sample-images/0000.bmp", "../fakebitinvestigation.npy")   # numpy uint8 512x512
+wm = embedding("immagini_demo/0000.bmp", "fakebitinvestigation.npy")   # numpy uint8 512x512
 ```
 
 - `input1` = percorso dell'immagine originale; `input2` = percorso del watermark `.npy` (1024 bit).
@@ -63,7 +62,11 @@ output1, output2 = detection("originale.bmp", "watermarkata.bmp", "attaccata.bmp
 - Decisione: presente se similarità ≥ `TAU` (costante in cima al file, ricavata dalla ROC).
 - Tempo misurato: circa 0,6 s per chiamata (limite 5 s).
 
-## Attacchi
+## Attacchi (un unico file: `attacks_fakebitinvestigation.py`)
+
+Tutto il nostro codice di attacco sta in questo file, che funziona da solo: usa solo librerie (numpy, scipy, opencv, pillow, scikit-image) e il WPSNR dei lab, copiato dentro. Contiene tre cose.
+
+**1. `attacks()`: un attacco, una catena o un attacco localizzato** (struttura d'esempio del regolamento, p.6).
 
 ```python
 from attacks_fakebitinvestigation import attacks, smooth_mask
@@ -84,40 +87,40 @@ att = attacks(wm, "awgn", [30], mask=smooth_mask(wm, 0.5))               # local
 - Solo gli attacchi ammessi (p.6): AWGN, blur, sharpening, JPEG, resize, median, anche combinati o localizzati.
 - Le zone degli attacchi localizzati (`MASKS`: zone lisce, testurizzate, bordi) sono calcolate **solo dalla watermarkata**, mai dall'originale.
 
-## Script di attacco
+Da riga di comando (salva l'attaccata e stampa il WPSNR):
 
 ```bash
-python attacchi_fakebitinvestigation.py --images DIR --originals DIR --detections DIR --out DIR \
-       [--only gruppo] [--procs N] [--total-min MINUTI] [--budget SECONDI] [--timeout SECONDI] [--no-greedy] [--resume]
+python attacks_fakebitinvestigation.py applica gruppoX_lena.bmp out.bmp jpeg 20
+python attacks_fakebitinvestigation.py applica gruppoX_lena.bmp out.bmp blur,jpeg 0.6 12
 ```
 
-| Opzione | Default | Significato |
-|---|---|---|
-| `--total-min` | 100 | minuti totali a disposizione; il tempo per immagine si calcola da questo, dal numero di immagini e dai processi |
-| `--budget` | da `--total-min` | secondi per immagine (sovrascrive il calcolo automatico) |
-| `--procs` | n. core − 1 | immagini attaccate in parallelo |
-| `--timeout` | 10 | secondi massimi per una chiamata alla detection di un altro gruppo |
-| `--resume` | — | riparte dopo un'interruzione, saltando le immagini già nel log |
+**2. `attack_image()`: la ricerca automatica dell'attacco più leggero che rompe un'immagine** (è quella che usiamo in gara).
 
-Protezioni contro le detection degli altri gruppi:
-- timeout per ogni chiamata;
-- errori catturati: dopo 3 errori di fila l'immagine viene saltata e segnalata a fine run;
-- stampe soppresse, nessuna finestra.
+```bash
+python attacks_fakebitinvestigation.py cerca --image gruppoX_lena.bmp --original lena.bmp \
+       --detection detection_gruppoX.py --out OUTDIR [--budget SECONDI] [--timeout SECONDI] [--no-greedy]
+```
 
-Il log `log_attacchi.csv` viene scritto man mano. `tutti_i_riusciti.csv` contiene tutti gli attacchi riusciti per ogni immagine, come alternative.
+```python
+from attacks_fakebitinvestigation import attack_image
+r = attack_image("gruppoX_lena.bmp", "lena.bmp", "detection_gruppoX.py", "OUTDIR", budget=600)
+# r["wpsnr"], r["desc"]: il riuscito con il WPSNR più alto (None = non rotta); r["error"] se qualcosa va storto
+```
 
-- `--images`: le watermarkate scaricate, `<gruppo>_<imageName>.bmp`;
-- `--originals`: le originali, `<imageName>.bmp`;
-- `--detections`: le detection degli altri gruppi, `detection_<gruppo>.py`;
-- `--out`: le attaccate, `fakebitinvestigation_<gruppo>_<imageName>.bmp`, e il log `log_attacchi.csv` (Image | Group | WPSNR | Attack(s) with parameters).
+Per l'immagine data:
+1. prova 25 famiglie di attacchi (singoli e catene, dal più leggero al più forte), sia globali sia localizzate su 7 zone;
+2. un WPSNR veloce (FFT, identico a quello dei lab) scarta senza chiamare la detection tutto ciò che va sotto i 35 dB;
+3. per ogni famiglia cerca con ricerca binaria il parametro più leggero che rompe, usando come verifica l'esito della detection del gruppo attaccato (uso confermato dai TA);
+4. "restituisce" alla watermarkata i blocchi 64×64 e 32×32 che non servono a rompere, per alzare il WPSNR, sempre con l'esito della detection del gruppo attaccato (ammesso dai TA il 19/10). La maschera delle zone viene salvata come PNG e citata nella descrizione dell'attacco. Si salta con `--no-greedy`;
+5. tiene il riuscito con il WPSNR più alto (p.7: se ne carica uno solo per immagine) e lo salva come `fakebitinvestigation_<gruppo>_<imageName>.bmp`.
 
-Per ogni immagine:
-1. prova 25 famiglie di attacchi, sia globali sia localizzate su 7 zone;
-2. per ognuna cerca con ricerca binaria il parametro più leggero che rompe, usando come verifica l'esito della detection del gruppo attaccato (uso confermato dai TA);
-3. "restituisce" alla watermarkata i blocchi 64×64 e 32×32 che non servono a rompere, per alzare il WPSNR, usando l'esito della detection del gruppo attaccato (ammesso dai TA il 19/10). La maschera delle zone viene salvata come PNG e citata nel log. Si salta con `--no-greedy`;
-4. tiene il riuscito con il WPSNR più alto: se ne carica uno solo per immagine (p.7).
+**L'originale non viene mai letto né usato per costruire l'attacco**: il suo percorso viene passato solo alla detection del gruppo attaccato, come suo `input1` (regolamento p.6; risposta dei TA del 20/10: il divieto riguarda usare l'originale, per esempio `watermarkata − originale`, non chiamare la loro detection).
 
-Noi non usiamo mai direttamente l'originale: lo riceve solo la detection altrui, come `input1`.
+Protezioni contro le detection degli altri gruppi: timeout per ogni chiamata (`--timeout`, 10 s); errori catturati (dopo 3 di fila l'immagine viene saltata e l'errore restituito); stampe soppresse, nessuna finestra.
+
+**3. La descrizione per il log** (`describe()`), nello stile dell'esempio del regolamento: `Blur sigma=0.6, JPEG QF=12`.
+
+Il giorno della gara, per attaccare tutte le immagini di tutti i gruppi in parallelo e scrivere il log Excel, usiamo un piccolo helper che **non si consegna** e non contiene attacchi: `../gara/cerca_attacchi_fakebitinvestigation.py`, che chiama `attack_image()` per ogni immagine (istruzioni in `../gara/ISTRUZIONI_GARA.md`).
 
 ## ROC e soglia τ
 
@@ -153,4 +156,4 @@ Dopo il 27/10 si possono cambiare solo parametri e posizioni di embedding (le co
 1. Cambiare la costante **in entrambi** `embedding_fakebitinvestigation.py` e `detection_fakebitinvestigation.py`. Devono restare identiche, a parte `TARGET_WPSNR`, che sta solo nell'embedding.
 2. Rifare la ROC completa (`python roc_fakebitinvestigation.py`) e copiare la τ stampata in `TAU` nella detection.
 3. Rilanciare `python demo_fakebitinvestigation.py`. Watermarkata → 1, originale → 0, tempi sotto i 5 s.
-4. Aggiornare la τ in questo README e nella §A7 di `spiegazione_embedding.md`.
+4. Aggiornare la τ in questo README e nella §A7 di `../documentazione/spiegazione_progetto.md`.

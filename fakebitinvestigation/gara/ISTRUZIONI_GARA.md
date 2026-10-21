@@ -1,15 +1,15 @@
 # Il giorno della gara (2/11): cosa fare, passo per passo
 
-Guida operativa del gruppo `fakebitinvestigation` per la difesa (8:30–10:00) e l'attacco (10:15–12:30), sempre dentro il regolamento (`../document.pdf`). Tutti i comandi si lanciano **dalla cartella `fakebitinvestigation/v2.0_ibrida/`** con l'ambiente attivo:
+Guida operativa del gruppo `fakebitinvestigation` per la difesa (8:30–10:00) e l'attacco (10:15–12:30), sempre dentro il regolamento (`../documentazione/document.pdf`). Tutti i comandi si lanciano **dalla cartella `fakebitinvestigation/consegna/`** (lì c'è l'unica copia del codice: embedding, detection, attacchi; questo file e `difesa_fakebitinvestigation.py` stanno in `../gara/`) con l'ambiente attivo:
 
 ```bash
-cd fakebitinvestigation/v2.0_ibrida
+cd fakebitinvestigation/consegna
 source ../../OFF_MDS_ENV/bin/activate
 ```
 
 > 🗣 **In parole povere**:
 > - **in difesa** proviamo ad attaccare noi stessi per decidere quanto "forte" mettere il watermark su ogni immagine, poi carichiamo;
-> - **in attacco** lasciamo lavorare `attacchi_fakebitinvestigation.py`, che per ogni immagine degli altri cerca l'attacco più leggero che toglie il watermark, e carichiamo man mano.
+> - **in attacco** lasciamo lavorare l'helper `../gara/cerca_attacchi_fakebitinvestigation.py`, che per ogni immagine degli altri chiama la ricerca automatica del nostro file degli attacchi (`attack_image()` in `attacks_fakebitinvestigation.py`) e scrive il log, e carichiamo man mano.
 
 ---
 
@@ -18,7 +18,7 @@ source ../../OFF_MDS_ENV/bin/activate
 1. **Un solo PC accede al sito; al massimo 3 laptop; niente server** (regolamento). Il PC "di calcolo" deve avere molti core: lo script usa `core − 1` processi.
 2. Sul PC di calcolo: repo aggiornato (`git pull`), ambiente `OFF_MDS_ENV` funzionante, e prova completa:
    ```bash
-   python demo_fakebitinvestigation.py --attacchi      # ~6 min: deve finire senza errori
+   python demo_fakebitinvestigation.py --attacchi      # ~5 min: deve finire senza errori
    ```
 3. **Librerie che le detection degli altri potrebbero usare**, da installare prima (in gara non c'è tempo):
    ```bash
@@ -43,7 +43,7 @@ Obiettivo: caricare le 3 immagini watermarkate e la detection. Il target di WPSN
 | quando | chi | cosa |
 |---|---|---|
 | 8:30 | B | scarica le 3 immagini originali in `~/gara/difesa/originali/` (nomi originali, es. `buildings.bmp`) |
-| 8:32 | A | **versione di sicurezza**: `python difesa_fakebitinvestigation.py --images ~/gara/difesa/originali --out ~/gara/difesa/sicurezza --final` (tutte a 62,05, ~30 s) |
+| 8:32 | A | **versione di sicurezza**: `python ../gara/difesa_fakebitinvestigation.py --images ~/gara/difesa/originali --out ~/gara/difesa/sicurezza --final` (tutte a 62,05, ~30 s) |
 | 8:35 | B | carica subito le 3 immagini di `~/gara/difesa/sicurezza/upload/` e la detection. Le immagini si possono ricaricare più volte in difesa (regolamento), quindi così siamo coperti anche se dopo qualcosa va storto |
 | 8:35 | A | **passo 1.1** (prova dei target) |
 | ~8:55 | tutti | **passo 1.2** (scelta) |
@@ -53,13 +53,13 @@ Obiettivo: caricare le 3 immagini watermarkate e la detection. Il target di WPSN
 ### 1.1 Prova dei target (~17 min)
 
 ```bash
-python difesa_fakebitinvestigation.py --images ~/gara/difesa/originali --out ~/gara/difesa/out
+python ../gara/difesa_fakebitinvestigation.py --images ~/gara/difesa/originali --out ~/gara/difesa/out
 ```
 
 Per ogni immagine e ogni target (58,05 e 62,05 dB):
 1. fa l'embedding;
 2. controlla che watermarkata → 1, originale → 0 e che la detection stia sotto i 5 s;
-3. **attacca noi stessi** con lo stesso motore dello script di attacco, al massimo 15 minuti per prova, 6 prove in parallelo.
+3. **attacca noi stessi** con lo stesso motore che usiamo in attacco (`attack_image()` di `attacks_fakebitinvestigation.py`), al massimo 15 minuti per prova, 6 prove in parallelo.
 
 Alla fine stampa la classifica delle 8 combinazioni di target con i punti di difesa stimati, e la riga da copiare, per esempio:
 
@@ -75,7 +75,7 @@ La simulazione usa **un solo** avversario, per quanto forte; in gara ci attaccan
 
 - **Il bonus +2 (mai rotti) è fragile.** Basta che uno solo dei 9 gruppi ci rompa una volta. Se una combinazione vince solo grazie al bonus, chiedersi se reggerebbe contro 9 avversari.
 - **Contro un attaccante forte la v2.0 viene rotta spesso a 62 dB** (70% delle immagini nelle nostre prove), ma quasi sempre a 35–38 dB, quindi con 6 punti di robustezza su 6. Scendere a 58 dB serve soprattutto a puntare al bonus.
-- Dalle nostre simulazioni (§A8.3 di `spiegazione_embedding.md`): 11,10 punti attesi a 58,05 contro 10,88 a 62,05. È una differenza piccola.
+- Dalle nostre simulazioni (§A8.3 di `../documentazione/spiegazione_progetto.md`): 11,10 punti attesi a 58,05 contro 10,88 a 62,05. È una differenza piccola.
 - **Non scendere sotto 58,05 di media**, altrimenti si perde un altro punto di qualità.
 
 Se il tempo stringe: **tutte a 62,05** (default del codice, nessuna modifica da fare).
@@ -85,7 +85,7 @@ Se il tempo stringe: **tutte a 62,05** (default del codice, nessuna modifica da 
 1. Aprire `embedding_fakebitinvestigation.py` e incollare la riga scelta al posto di `TARGET_BY_IMAGE = {}`. È un **parametro**, quindi è ammesso come fine-tuning. **La detection NON si tocca**: τ non dipende dal target.
 2. Generare le immagini da caricare **con il codice così com'è**, così codice e immagini caricate coincidono:
    ```bash
-   python difesa_fakebitinvestigation.py --images ~/gara/difesa/originali --out ~/gara/difesa/out --final
+   python ../gara/difesa_fakebitinvestigation.py --images ~/gara/difesa/originali --out ~/gara/difesa/out --final
    ```
    Deve stampare `OK` su tutte e 3 e la media WPSNR. Le immagini sono in `~/gara/difesa/out/upload/`, già con il nome `fakebitinvestigation_<imageName>.bmp`.
 3. Salvare lo stato nel repo, così resta la prova di cosa abbiamo caricato:
@@ -96,7 +96,7 @@ Se il tempo stringe: **tutte a 62,05** (default del codice, nessuna modifica da 
 ### 1.4 Upload (B)
 
 - Le 3 immagini di `~/gara/difesa/out/upload/`.
-- **`detection_fakebitinvestigation.py`** (questa cartella, file unico).
+- **`detection_fakebitinvestigation.py`** (cartella `consegna/`, file unico).
 - **Dopo l'upload non si modifica più nessun file caricato**: penalità di 2 punti.
 
 ---
@@ -124,7 +124,7 @@ Le originali servono **solo** alla detection degli altri, che le vuole come `inp
 ### 2.2 Controllo delle detection (1 minuto)
 
 ```bash
-python attacchi_fakebitinvestigation.py --images ~/gara/attacco/img --originals ~/gara/attacco/orig \
+python ../gara/cerca_attacchi_fakebitinvestigation.py --images ~/gara/attacco/img --originals ~/gara/attacco/orig \
        --detections ~/gara/attacco/det --out ~/gara/attacco/out --check
 ```
 
@@ -136,7 +136,7 @@ Per ogni immagine stampa `ok, X s per chiamata`, oppure:
 ### 2.3 Attacco (10:30 → al massimo ~12:10)
 
 ```bash
-python attacchi_fakebitinvestigation.py --images ~/gara/attacco/img --originals ~/gara/attacco/orig \
+python ../gara/cerca_attacchi_fakebitinvestigation.py --images ~/gara/attacco/img --originals ~/gara/attacco/orig \
        --detections ~/gara/attacco/det --out ~/gara/attacco/out --total-min 100
 ```
 
@@ -155,7 +155,7 @@ Alla fine lo script stampa `rotte X/27` e l'elenco delle immagini con errori. Po
 
 - **Un gruppo senza nessuna immagine rotta** vale punti di attività (e forse il bonus +2): rilanciare solo su quel gruppo, con più tempo e su una cartella di output diversa, così non si sovrascrive il log principale:
   ```bash
-  python attacchi_fakebitinvestigation.py ... --out ~/gara/attacco/out_gruppoX --only gruppoX --budget 900
+  python ../gara/cerca_attacchi_fakebitinvestigation.py ... --out ~/gara/attacco/out_gruppoX --only gruppoX --budget 900
   ```
 - Le alternative per ogni immagine (tutti gli attacchi riusciti, non solo il migliore) sono in `~/gara/attacco/out/tutti_i_riusciti.csv`.
 

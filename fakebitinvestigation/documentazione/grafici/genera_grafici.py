@@ -1,10 +1,10 @@
 """
-Grafici per spiegazione_embedding.md (sezione A15) e per il PDF.
+Grafici per spiegazione_progetto.md (sezione A15) e per il PDF.
 
 Tutti i numeri sono quelli MISURATI e riportati nel .md (la sezione di provenienza e' indicata
 accanto a ogni dato): qui non si calcola niente di nuovo, si disegna e basta.
 
-Uso (da v2.0_ibrida/grafici/):  python genera_grafici.py   -> scrive i .png in questa cartella
+Uso (da documentazione/grafici/):  python genera_grafici.py   -> scrive i .png in questa cartella
 """
 import os
 

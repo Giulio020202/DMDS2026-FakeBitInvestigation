@@ -26,8 +26,9 @@ Questo codice NON fa parte della detection (p.4: la soglia si calcola una volta 
 
 Uso (da qualunque cartella):
     python roc_fakebitinvestigation.py [--images DIR] [--watermark FILE.npy] [--attacks N] [--quick] [--out FILE.png]
-  --images     cartella con le immagini BMP 512x512 (default: ../sample-images, 101 immagini)
-  --watermark  watermark .npy (default: ../fakebitinvestigation.npy)
+  --images     cartella con le immagini BMP 512x512 (default: ../sample-images, le 101 immagini della run completa;
+               se non c'e', immagini_demo/ di questa cartella, 10 immagini)
+  --watermark  watermark .npy (default: fakebitinvestigation.npy in questa cartella)
   --attacks    attacchi casuali per immagine (default 40)
   --quick      prova veloce: solo le prime 10 immagini e 5 attacchi ciascuna; la tau che esce NON e'
                quella vera (troppi pochi campioni), serve solo a vedere che tutto gira
@@ -56,7 +57,10 @@ import embedding_fakebitinvestigation as emb
 import detection_fakebitinvestigation as det
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-WATERMARK = os.path.join(HERE, "..", "fakebitinvestigation.npy")   # watermark e immagini sono nella cartella superiore
+WATERMARK = os.path.join(HERE, "fakebitinvestigation.npy")         # il nostro watermark, in questa cartella
+IMAGES = os.path.join(HERE, "..", "sample-images")                 # le 101 immagini della run completa
+if not os.path.isdir(IMAGES):
+    IMAGES = os.path.join(HERE, "immagini_demo")                   # solo la cartella consegnata: le 10 della demo
 FPR_TARGET = 0.001      # FPR scelta per tau (il regolamento ammette [0, 0.1])
 N_RANDOM = 10           # watermark casuali per ogni attacco (campioni con label 0)
 SEED = 2026
@@ -184,7 +188,7 @@ def _tau(h0, fpr_target):
 
 def main():
     ap = argparse.ArgumentParser(description="ROC e soglia tau del gruppo fakebitinvestigation (v2.0)")
-    ap.add_argument("--images", default=os.path.join(HERE, "..", "sample-images"))
+    ap.add_argument("--images", default=IMAGES)
     ap.add_argument("--watermark", default=WATERMARK)
     ap.add_argument("--attacks", type=int, default=40)
     ap.add_argument("--quick", action="store_true")

@@ -5,12 +5,13 @@ Mostra come si usa ogni file consegnato:
   1. embedding_fakebitinvestigation.py   embedding(originale, watermark) -> watermarkata
   2. detection_fakebitinvestigation.py   detection(originale, watermarkata, attaccata) -> (presente?, WPSNR)
   3. attacks_fakebitinvestigation.py     attacks(watermarkata, nome, parametri) -> attaccata
-  4. attacchi_fakebitinvestigation.py        ricerca automatica dell'attacco piu' leggero (con --attacchi)
+  4. attacks_fakebitinvestigation.py     ricerca automatica dell'attacco piu' leggero, attack_image() (con --attacchi)
   5. roc_fakebitinvestigation.py         ROC e soglia tau (con --roc, versione veloce)
 
-Uso (da v2.0_ibrida/):
+Uso (da consegna/):
   python demo_fakebitinvestigation.py [--image FILE.bmp] [--watermark FILE.npy] [--out DIR] [--attacchi] [--roc]
-Default: ../sample-images/0000.bmp, ../fakebitinvestigation.npy, cartella ./demo_output
+Default: immagini_demo/0000.bmp, fakebitinvestigation.npy (entrambi in questa cartella), cartella ./demo_output.
+Con --roc la ROC veloce usa le 10 immagini di immagini_demo/: la demo funziona con la sola cartella consegnata.
 """
 import argparse
 import os
@@ -47,8 +48,8 @@ DEMO_ATTACKS = [
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--image", default=os.path.join(HERE, "..", "sample-images", "0000.bmp"))
-    ap.add_argument("--watermark", default=os.path.join(HERE, "..", "fakebitinvestigation.npy"))
+    ap.add_argument("--image", default=os.path.join(HERE, "immagini_demo", "0000.bmp"))
+    ap.add_argument("--watermark", default=os.path.join(HERE, "fakebitinvestigation.npy"))
     ap.add_argument("--out", default=os.path.join(HERE, "demo_output"))
     ap.add_argument("--attacchi", action="store_true", help="prova anche lo script di attacco contro la nostra detection")
     ap.add_argument("--roc", action="store_true", help="lancia anche la ROC veloce (--quick)")
@@ -98,25 +99,24 @@ def main():
 
     # ---------------------------------------------------------------- 4. attacchi (facoltativo)
     if a.attacchi:
-        print("\n=== 4. SCRIPT DI ATTACCO contro la nostra detection (come se fossimo un altro gruppo 'demo') ===")
+        print("\n=== 4. RICERCA AUTOMATICA DELL'ATTACCO contro la nostra detection (come se fossimo un altro gruppo 'demo') ===")
         g = os.path.join(a.out, "attacchi")
-        for sub in ("img", "orig", "det", "out"):
-            os.makedirs(os.path.join(g, sub), exist_ok=True)
-        shutil.copy(p_wm, os.path.join(g, "img", f"demo_{name}.bmp"))
-        shutil.copy(a.image, os.path.join(g, "orig", f"{name}.bmp"))
-        shutil.copy(os.path.join(HERE, "detection_fakebitinvestigation.py"), os.path.join(g, "det", "detection_demo.py"))
+        os.makedirs(g, exist_ok=True)
+        p_demo = os.path.join(g, f"demo_{name}.bmp")              # nome <gruppo>_<imageName>.bmp, come in gara
+        shutil.copy(p_wm, p_demo)
         sys.stdout.flush()
-        subprocess.run([sys.executable, os.path.join(HERE, "attacchi_fakebitinvestigation.py"),
-                        "--images", os.path.join(g, "img"), "--originals", os.path.join(g, "orig"),
-                        "--detections", os.path.join(g, "det"), "--out", os.path.join(g, "out"),
-                        "--procs", "1", "--budget", "300"], check=True)
+        subprocess.run([sys.executable, os.path.join(HERE, "attacks_fakebitinvestigation.py"), "cerca",
+                        "--image", p_demo, "--original", a.image,
+                        "--detection", os.path.join(HERE, "detection_fakebitinvestigation.py"),
+                        "--out", os.path.join(g, "out"), "--budget", "300"], check=True)
 
     # ---------------------------------------------------------------- 5. ROC (facoltativo)
     if a.roc:
         print("\n=== 5. ROC veloce (la tau vera viene dalla run completa, vedi README) ===")
         sys.stdout.flush()
         subprocess.run([sys.executable, os.path.join(HERE, "roc_fakebitinvestigation.py"), "--quick",
-                        "--watermark", a.watermark, "--out", os.path.join(a.out, "roc_quick.png")], check=True)
+                        "--watermark", a.watermark, "--images", os.path.join(HERE, "immagini_demo"),
+                        "--out", os.path.join(a.out, "roc_quick.png")], check=True)
 
     print(f"\nTutti i file della demo sono in {a.out}")
 
