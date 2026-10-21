@@ -15,7 +15,7 @@
 \textbf{Il loro schema.} Wavelet Haar a 2 livelli (sottobande LH2, HL2, HH2), spread spectrum con maschera di energia locale, codice correttore LDPC; forza fissa (non calibrata sul WPSNR). Detection: bit 0/1 decodificati, coseno con soglia 0,5377. \textbf{Banco:} 12 immagini (le 3 della gara 2022 + 0000, 0010, \dots, 0080), watermarkate con il loro codice e il loro watermark (WPSNR 56,23–58,16 dB, media 57,60) e con il nostro (62,05 dB).
 
 \medskip
-\textbf{Run 1 — il nostro script di attacco contro di loro} (\texttt{attacchi\_fakebitinvestigation.py}, impostazioni di gara: 25 famiglie + 7 zone + greedy a blocchi con la loro detection come oracolo; 12 processi, 29{,}4 min per immagine)
+\textbf{Run 1 — il nostro script di attacco contro di loro} (la ricerca automatica \texttt{attack\_image()} di \texttt{attacks\_fakebitinvestigation.py}, allora nel file \texttt{attacchi\_fakebitinvestigation.py}; impostazioni di gara: 25 famiglie + 7 zone + greedy a blocchi con la loro detection come oracolo; 12 processi, 29{,}4 min per immagine)
 
 \begin{tabularx}{\linewidth}{@{}l r X@{}}
 \toprule
