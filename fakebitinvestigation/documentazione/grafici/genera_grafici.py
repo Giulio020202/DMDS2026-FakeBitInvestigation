@@ -151,7 +151,7 @@ ax.set_title("Il nemico è il JPEG: 72 rotture su 73 lo contengono", loc="left",
 ax.grid(axis="y", visible=False)
 save(fig, "g6_attacchi_vincenti.png")
 
-# 7. simulazione della fase di attacco: WPSNR delle 18 immagini rotte su 27 (§A13)
+# 7. simulazione della fase di attacco: WPSNR delle 18 immagini rotte su 27 (§A12)
 broken = [37.82, 35.51, 35.51, 36.22, 37.99, 37.34, 36.36, 36.75, 37.26,
           36.16, 35.62, 37.00, 36.00, 35.57, 35.61, 37.46, 36.14, 36.34]
 fig, ax = plt.subplots(figsize=(6.4, 2.6))

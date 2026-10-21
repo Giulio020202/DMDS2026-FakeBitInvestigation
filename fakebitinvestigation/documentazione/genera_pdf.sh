@@ -19,7 +19,7 @@ printf '%s\n' '\newfontfamily\simboli{Noto Sans Symbols 2}' > "$TMP/header.tex"
 
 cd "$HERE"
 "$PANDOC" "$TMP/corpo.md" -o "$HERE/spiegazione_progetto.pdf" --pdf-engine=lualatex \
-  --toc --toc-depth=1 --resource-path="$HERE" -H "$TMP/header.tex" \
+  --toc --toc-depth=2 --resource-path="$HERE" -H "$TMP/header.tex" \
   -M title="Capture the Mark 2026: la difesa del gruppo fakebitinvestigation" \
   -M subtitle='Versione 2.0 "ibrida" (DCT + wavelet): spiegazione completa di strategia, algoritmo e codice' -M lang=it \
   -V geometry:margin=2cm -V fontsize=10pt -V colorlinks=true \
