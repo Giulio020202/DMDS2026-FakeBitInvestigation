@@ -1,40 +1,40 @@
 """
-Capture the Mark 2026 - calcolo della soglia tau (ROC) del gruppo fakebitinvestigation
-(versione 2.0, IBRIDA DCT + wavelet: W ha 2048 valori, 1024 DCT + 1024 wavelet).
+Capture the Mark 2026 - computation of the threshold tau (ROC) of group fakebitinvestigation
+(version 2.0, HYBRID DCT + wavelet: W has 2048 values, 1024 DCT + 1024 wavelet).
 
-Segue la procedura di p.4 del regolamento (Lab4, ROC-curves, esempio 2), con i controlli in piu' del Lab 4
-(H0-A, H0-B e set di test separato):
-  1. embedding del nostro watermark W_original su un insieme di immagini;
-  2. in un ciclo, attacchi casuali (solo quelli permessi: awgn, blur, sharpening, jpeg,
-     resize, median, anche combinati o localizzati) sulle immagini watermarkate;
-  3. estrazione con la stessa funzione della detection;
-  4. sim(W_extracted dalla watermarkata, W estratto dall'attaccata) -> score con label 1 (H1)
-     (e' esattamente la similarita' calcolata dalla detection);
-  5. score con label 0, con la STESSA funzione di similarita' della detection (massimo sulle varianti):
-     H0-R: per ogni attacco, N_RANDOM watermark casuali W_random (in forma +-1, la stessa mappatura
-           dell'embedding, messo in entrambe le parti con l'ampiezza di ciascuna parte presa da W_extracted)
-           confrontati con il W estratto dall'attaccata (e' la procedura del regolamento);
-     H0-A: lo STESSO attacco applicato all'originale non watermarkata (Lab 4);
-     H0-B: lo STESSO attacco applicato alla stessa immagine con il watermark di un "altro gruppo"
-           (stesso schema, watermark casuale) (Lab 4);
-  6. le immagini sono divise in CALIBRAZIONE (70%) e TEST (30%, mai usate per scegliere tau);
-     sulla calibrazione: curva ROC (sklearn) e tau = la soglia piu' bassa con FPR <= FPR_TARGET
-     su CIASCUNO dei tre tipi di H0 (dentro l'intervallo ammesso [0, 0.1]);
-     sul test: tau congelata, si misurano FPR (per tipo) e TPR.
+Follows the procedure of p.4 of the rules (Lab4, ROC-curves, example 2), with the extra checks of Lab 4
+(H0-A, H0-B and separate test set):
+  1. embedding of our watermark W_original on a set of images;
+  2. in a loop, random attacks (only the allowed ones: awgn, blur, sharpening, jpeg,
+     resize, median, also combined or localized) on the watermarked images;
+  3. extraction with the same function as the detection;
+  4. sim(W_extracted from the watermarked image, W extracted from the attacked one) -> score with label 1 (H1)
+     (it is exactly the similarity computed by the detection);
+  5. scores with label 0, with the SAME similarity function as the detection (maximum over the variants):
+     H0-R: for every attack, N_RANDOM random watermarks W_random (in +-1 form, the same mapping as
+           the embedding, put in both parts with the amplitude of each part taken from W_extracted)
+           compared with the W extracted from the attacked image (it is the procedure of the rules);
+     H0-A: the SAME attack applied to the non-watermarked original (Lab 4);
+     H0-B: the SAME attack applied to the same image with the watermark of "another group"
+           (same scheme, random watermark) (Lab 4);
+  6. the images are split into CALIBRATION (70%) and TEST (30%, never used to choose tau);
+     on the calibration: ROC curve (sklearn) and tau = the lowest threshold with FPR <= FPR_TARGET
+     on EACH of the three kinds of H0 (inside the allowed interval [0, 0.1]);
+     on the test: tau frozen, FPR (per kind) and TPR are measured.
 
-Questo codice NON fa parte della detection (p.4: la soglia si calcola una volta sola, fuori).
+This code is NOT part of the detection (p.4: the threshold is computed only once, outside).
 
-Uso (da qualunque cartella):
+Usage (from any folder):
     python roc_fakebitinvestigation.py [--images DIR] [--watermark FILE.npy] [--attacks N] [--quick] [--out FILE.png]
-  --images     cartella con le immagini BMP 512x512 (default: ../sample-images, le 101 immagini della run completa;
-               se non c'e', immagini_demo/ di questa cartella, 10 immagini)
-  --watermark  watermark .npy (default: fakebitinvestigation.npy in questa cartella)
-  --attacks    attacchi casuali per immagine (default 40)
-  --quick      prova veloce: solo le prime 10 immagini e 5 attacchi ciascuna; la tau che esce NON e'
-               quella vera (troppi pochi campioni), serve solo a vedere che tutto gira
-  --out        dove salvare la curva (default: roc_fakebitinvestigation.png accanto a questo file)
-Output: tau stampata a video + curva .png.
-Dipendenze in piu' rispetto a embedding/detection: scikit-learn, matplotlib, pillow, scikit-image.
+  --images     folder with the BMP 512x512 images (default: ../sample-images, the 101 images of the full run;
+               if it is not there, demo_images/ of this folder, 10 images)
+  --watermark  .npy watermark (default: fakebitinvestigation.npy in this folder)
+  --attacks    random attacks per image (default 40)
+  --quick      quick test: only the first 10 images and 5 attacks each; the tau that comes out is NOT
+               the real one (too few samples), it only shows that everything runs
+  --out        where to save the curve (default: roc_fakebitinvestigation.png next to this file)
+Output: tau printed on screen + .png curve.
+Extra dependencies with respect to embedding/detection: scikit-learn, matplotlib, pillow, scikit-image.
 """
 import argparse
 import glob
@@ -57,17 +57,17 @@ import embedding_fakebitinvestigation as emb
 import detection_fakebitinvestigation as det
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-WATERMARK = os.path.join(HERE, "fakebitinvestigation.npy")         # il nostro watermark, in questa cartella
-IMAGES = os.path.join(HERE, "..", "sample-images")                 # le 101 immagini della run completa
+WATERMARK = os.path.join(HERE, "fakebitinvestigation.npy")         # our watermark, in this folder
+IMAGES = os.path.join(HERE, "..", "sample-images")                 # the 101 images of the full run
 if not os.path.isdir(IMAGES):
-    IMAGES = os.path.join(HERE, "immagini_demo")                   # solo la cartella consegnata: le 10 della demo
-FPR_TARGET = 0.001      # FPR scelta per tau (il regolamento ammette [0, 0.1])
-N_RANDOM = 10           # watermark casuali per ogni attacco (campioni con label 0)
+    IMAGES = os.path.join(HERE, "demo_images")                     # only the submitted folder: the 10 of the demo
+FPR_TARGET = 0.001      # FPR chosen for tau (the rules allow [0, 0.1])
+N_RANDOM = 10           # random watermarks for every attack (samples with label 0)
 SEED = 2026
-TEST_EVERY = 10          # immagini con indice % 10 >= 7 -> set di TEST (30%), le altre -> CALIBRAZIONE
+TEST_EVERY = 10          # images with index % 10 >= 7 -> TEST set (30%), the others -> CALIBRATION
 
 
-# ----------------------------------------------------------------- attacchi (lab)
+# ----------------------------------------------------------------- attacks (lab)
 def _u8(x):
     return np.clip(np.rint(x), 0, 255).astype(np.uint8)
 
@@ -113,8 +113,8 @@ def _smooth_mask(img, q):
 
 
 def random_attack(rng):
-    """Sceglie un attacco casuale tra quelli permessi e restituisce (funzione, nome): la stessa
-    funzione si applica a piu' immagini (watermarkata, originale, watermarkata da un altro gruppo)."""
+    """Picks a random attack among the allowed ones and returns (function, name): the same
+    function is applied to several images (watermarked, original, watermarked by another group)."""
     k = rng.integers(10)
     if k == 0:
         q = int(rng.integers(3, 95)); return (lambda x: jpeg_compression(x, q)), "jpeg"
@@ -133,7 +133,7 @@ def random_attack(rng):
         return (lambda x: blur(awgn(x, s, sd), b)), "awgn+blur"
     if k == 7:
         b, q = rng.uniform(0.3, 1.5), int(rng.integers(3, 50)); return (lambda x: jpeg_compression(blur(x, b), q)), "blur+jpeg"
-    if k == 8:   # localizzato sulle zone lisce (maschera calcolata dall'immagine attaccata stessa)
+    if k == 8:   # localized on the smooth zones (mask computed from the attacked image itself)
         qm, q = rng.uniform(0.3, 0.7), int(rng.integers(2, 20))
 
         def f(x):
@@ -141,25 +141,25 @@ def random_attack(rng):
             out = x.copy()
             out[m] = jpeg_compression(x, q)[m]
             return out
-        return f, "jpeg locale"
+        return f, "local jpeg"
     m = int(rng.choice([3, 5, 7])); return (lambda x: median_filter(x, size=m)), "median_nd"
 
 
-# ----------------------------------------------------------------- un'immagine
+# ----------------------------------------------------------------- one image
 def _one_image(args):
     path, n_att, seed, watermark = args
     rng = np.random.default_rng(seed)
     original = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
     watermarked = emb.embedding(path, watermark)
-    # "altro gruppo": stessa immagine, stesso schema, watermark casuale (file temporaneo per embedding())
+    # "another group": same image, same scheme, random watermark (temporary file for embedding())
     with tempfile.TemporaryDirectory() as tmp:
-        other_wm = os.path.join(tmp, "altro.npy")
+        other_wm = os.path.join(tmp, "other.npy")
         np.save(other_wm, rng.integers(0, 2, emb.N_BITS))
         other = emb.embedding(path, other_wm)
     ctx = det._context(original)
     W_ext = det._extract(ctx, watermarked)
     half = W_ext.size // 2
-    # ampiezza (rms) di ciascuna parte: il watermark casuale viene messo nella stessa forma di W_ext
+    # amplitude (rms) of each part: the random watermark is put in the same form as W_ext
     amp = np.array([np.sqrt(np.mean(W_ext[:half] ** 2)), np.sqrt(np.mean(W_ext[half:] ** 2))])
     scores, kinds, wps = [], [], []       # kinds: 'H1', 'H0-R', 'H0-A', 'H0-B'
     for _ in range(n_att):
@@ -180,14 +180,14 @@ def _one_image(args):
 
 
 def _tau(h0, fpr_target):
-    """La soglia piu' bassa con FPR <= fpr_target: sopra soglia al massimo floor(fpr_target * n) campioni H0."""
+    """The lowest threshold with FPR <= fpr_target: at most floor(fpr_target * n) H0 samples above the threshold."""
     h0s = np.sort(h0)
     m = int(np.floor(fpr_target * len(h0s)))
     return float(np.nextafter(h0s[len(h0s) - m - 1], np.inf))
 
 
 def main():
-    ap = argparse.ArgumentParser(description="ROC e soglia tau del gruppo fakebitinvestigation (v2.0)")
+    ap = argparse.ArgumentParser(description="ROC and threshold tau of group fakebitinvestigation (v2.0)")
     ap.add_argument("--images", default=IMAGES)
     ap.add_argument("--watermark", default=WATERMARK)
     ap.add_argument("--attacks", type=int, default=40)
@@ -199,23 +199,23 @@ def main():
     if a.quick:
         files, n_att = files[:10], 5
     if not files:
-        sys.exit(f"nessuna immagine .bmp in {a.images}")
+        sys.exit(f"no .bmp image in {a.images}")
     t0 = time.time()
     with Pool(max(1, (os.cpu_count() or 2) - 1)) as p:
         res, res_idx = [], []
         jobs = [(f, n_att, SEED + i, a.watermark) for i, f in enumerate(files)]
         for i, r in enumerate(p.imap(_one_image, jobs, chunksize=1)):
             res.append(r); res_idx.append(i)
-            k = len(res)                     # barra di avanzamento (su stderr)
+            k = len(res)                     # progress bar (on stderr)
             el = time.time() - t0
-            sys.stderr.write(f"\r[{'#' * (30 * k // len(files)):30s}] {k}/{len(files)} immagini, "
-                             f"{el / 60:.1f} min, mancano ~{el / k * (len(files) - k) / 60:.1f} min ")
+            sys.stderr.write(f"\r[{'#' * (30 * k // len(files)):30s}] {k}/{len(files)} images, "
+                             f"{el / 60:.1f} min, ~{el / k * (len(files) - k) / 60:.1f} min left ")
             sys.stderr.flush()
         sys.stderr.write("\n")
-    # res_idx[j] = indice dell'immagine del risultato j: decide se e' di calibrazione o di test
+    # res_idx[j] = index of the image of result j: decides whether it is calibration or test
     test_set = {i for i in range(len(files)) if i % TEST_EVERY >= 7}
-    print(f"{len(files)} immagini ({len(files) - len(test_set)} calibrazione, {len(test_set)} test), {n_att} attacchi "
-          f"ciascuna, {N_RANDOM} watermark casuali per attacco, {time.time() - t0:.0f}s")
+    print(f"{len(files)} images ({len(files) - len(test_set)} calibration, {len(test_set)} test), {n_att} attacks "
+          f"each, {N_RANDOM} random watermarks per attack, {time.time() - t0:.0f}s")
 
     def gather(sel):
         sc = np.concatenate([np.asarray(res[j][0]) for j in sel])
@@ -231,27 +231,27 @@ def main():
     tau = max(taus.values())
     labels = (kd == 'H1').astype(int)
     fpr, tpr, thr = roc_curve(labels, sc, drop_intermediate=False)
-    print(f"CALIBRAZIONE: {len(h1)} campioni H1, H0-R {np.sum(kd == 'H0-R')}, H0-A {np.sum(kd == 'H0-A')}, "
-          f"H0-B {np.sum(kd == 'H0-B')}; AUC (H0 insieme) = {auc(fpr, tpr):.5f}")
+    print(f"CALIBRATION: {len(h1)} H1 samples, H0-R {np.sum(kd == 'H0-R')}, H0-A {np.sum(kd == 'H0-A')}, "
+          f"H0-B {np.sum(kd == 'H0-B')}; AUC (all H0 together) = {auc(fpr, tpr):.5f}")
     for k, t in taus.items():
         x = sc[kd == k]
-        print(f"  {k}: media {x.mean():+.4f}, dev.std {x.std():.4f}, quantile 99.9% {np.quantile(x, 0.999):.4f}, "
-              f"max {x.max():.4f} -> soglia per FPR <= {FPR_TARGET}: {t:.4f}")
+        print(f"  {k}: mean {x.mean():+.4f}, std {x.std():.4f}, 99.9% quantile {np.quantile(x, 0.999):.4f}, "
+              f"max {x.max():.4f} -> threshold for FPR <= {FPR_TARGET}: {t:.4f}")
     valid = (kd == 'H1') & (wp >= 35)
-    print(f"tau = massimo delle tre = {tau:.4f}  ->  FPR H0-R {np.mean(sc[kd == 'H0-R'] >= tau):.5f}, "
+    print(f"tau = maximum of the three = {tau:.4f}  ->  FPR H0-R {np.mean(sc[kd == 'H0-R'] >= tau):.5f}, "
           f"H0-A {np.mean(sc[kd == 'H0-A'] >= tau):.5f}, H0-B {np.mean(sc[kd == 'H0-B'] >= tau):.5f}; "
-          f"TPR {np.mean(h1 >= tau):.4f}, TPR sui soli attacchi con WPSNR >= 35: {np.mean(sc[valid] >= tau):.4f}")
+          f"TPR {np.mean(h1 >= tau):.4f}, TPR on the attacks with WPSNR >= 35 only: {np.mean(sc[valid] >= tau):.4f}")
     sc2, kd2, wp2 = gather(tst)
     valid2 = (kd2 == 'H1') & (wp2 >= 35)
-    print(f"TEST (tau congelata {tau:.4f}): FPR H0-R {np.mean(sc2[kd2 == 'H0-R'] >= tau):.5f}, "
+    print(f"TEST (tau frozen {tau:.4f}): FPR H0-R {np.mean(sc2[kd2 == 'H0-R'] >= tau):.5f}, "
           f"H0-A {np.mean(sc2[kd2 == 'H0-A'] >= tau):.5f}, H0-B {np.mean(sc2[kd2 == 'H0-B'] >= tau):.5f}; "
-          f"TPR {np.mean(sc2[kd2 == 'H1'] >= tau):.4f}, TPR sui soli attacchi con WPSNR >= 35: {np.mean(sc2[valid2] >= tau):.4f}")
+          f"TPR {np.mean(sc2[kd2 == 'H1'] >= tau):.4f}, TPR on the attacks with WPSNR >= 35 only: {np.mean(sc2[valid2] >= tau):.4f}")
     for t in (0.08, 0.086, 0.09, 0.10):
-        print(f"  tau={t:.3f} (calibrazione): FPR H0-R {np.mean(sc[kd == 'H0-R'] >= t):.5f}, "
+        print(f"  tau={t:.3f} (calibration): FPR H0-R {np.mean(sc[kd == 'H0-R'] >= t):.5f}, "
               f"H0-A {np.mean(sc[kd == 'H0-A'] >= t):.5f}, H0-B {np.mean(sc[kd == 'H0-B'] >= t):.5f}, TPR {np.mean(h1 >= t):.4f}")
 
     import matplotlib
-    matplotlib.use("Agg")                        # nessuna finestra: salviamo solo il file
+    matplotlib.use("Agg")                        # no window: we only save the file
     import matplotlib.pyplot as plt
     plt.figure(figsize=(6, 5))
     plt.plot(fpr, tpr, lw=2, label=f"ROC (AUC = {auc(fpr, tpr):.4f})")
@@ -262,7 +262,7 @@ def main():
     plt.xlabel("False Positive Rate"); plt.ylabel("True Positive Rate")
     plt.title("ROC - fakebitinvestigation"); plt.legend(loc="lower right")
     plt.savefig(a.out, dpi=120, bbox_inches="tight")
-    print(f"curva salvata in {a.out}")
+    print(f"curve saved in {a.out}")
 
 
 if __name__ == "__main__":

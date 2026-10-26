@@ -1,25 +1,23 @@
 """
-Capture the Mark 2026 - embedding del gruppo fakebitinvestigation (versione 2.0, IBRIDA DCT + wavelet)
+Capture the Mark 2026 - embedding, group fakebitinvestigation
 
-Stesso schema della versione 1.0 (spread spectrum a coppie differenziali, watermark bipolare,
-ampiezza additiva uniforme calibrata al WPSNR target), ma lo STESSO watermark viene inserito
-in due trasformate diverse:
-  1) DCT globale, banda radiale R_MIN..R_MAX (identica alla v1.0);
-  2) wavelet db4 a DWT_LEVELS livelli, sottobande di dettaglio dei livelli DWT_USE
-     (livello 3 ~ 0.06-0.125 cicli/pixel, livello 4 ~ 0.03-0.06: circa la stessa banda della DCT,
-     ma con funzioni base localizzate nello spazio).
-Le due parti hanno ampiezze relative K_DCT e K_DWT; un'unica scala viene calibrata con la
-bisezione in modo da ottenere esattamente TARGET_WPSNR (codice WPSNR dei lab).
+Our scheme is spread spectrum on pairs of coefficients: each bit of the watermark (mapped to -1/+1)
+increases the magnitude of one coefficient and decreases the magnitude of its neighbour by the same
+amount. The same watermark is embedded twice:
+  1) in the global DCT of the image, inside the radial band R_MIN..R_MAX;
+  2) in a db4 wavelet decomposition (DWT_LEVELS levels), in the detail subbands of the levels in
+     DWT_USE. Levels 3 and 4 cover about the same frequencies as the DCT part (0.03-0.125 cycles/pixel),
+     but every wavelet coefficient only covers a small area of the image.
+The two parts have relative amplitudes K_DCT and K_DWT. A single scale factor is then found by
+bisection, so that the WPSNR (computed with the lab code) ends up just above TARGET_WPSNR.
 
-Regole rispettate (document.pdf, regolamento aggiornato):
-  - firma embedding(input1, input2) -> output1
-      input1 = stringa col nome/percorso dell'immagine originale (BMP 512x512 grigi)
-      input2 = stringa col nome/percorso del watermark (.npy, 1024 bit 0/1)
-      output1 = immagine watermarkata (numpy uint8 512x512)
-  - immagini lette con OpenCV;
-  - il codice non stampa nulla, non apre finestre, non scrive file;
-  - il "fine-tuning" consentito dopo il 27/10 riguarda solo parametri e
-    posizioni di embedding: sono tutti nelle costanti qui sotto.
+embedding(input1, input2) -> output1
+  input1  = path of the original image (512x512 grayscale BMP)
+  input2  = path of the watermark (.npy, 1024 bits 0/1)
+  output1 = watermarked image (numpy uint8 512x512)
+Images are read with OpenCV; the function prints nothing, opens no windows and writes no files.
+Everything we may fine-tune after the 27/10 deadline (parameters and embedding locations) is in
+the constants below.
 """
 import os
 
@@ -30,26 +28,26 @@ from scipy.fft import dctn, idctn
 from scipy.signal import convolve2d
 
 # ----------------------------------------------------------------------------
-# PARAMETRI (gli unici da toccare nel fine-tuning; vanno copiati identici nella detection)
+# PARAMETERS (the ones describing where the watermark goes must be the same in the detection)
 # ----------------------------------------------------------------------------
-TARGET_WPSNR = 62.05   # dB: appena sopra la soglia 62 della tabella punti (5 punti)
-TARGET_BY_IMAGE = {}   # target diverso per singola immagine, es. {"buildings": 58.05}: nome del file senza
-                       # estensione -> dB. Vuoto = TARGET_WPSNR per tutte. Si riempie il giorno della gara
-                       # (difesa_fakebitinvestigation.py), cosi' il codice riproduce esattamente le immagini caricate.
-R_MIN = 32.0           # banda radiale dei coefficienti DCT (come la v1.0)
+TARGET_WPSNR = 62.05   # dB: just above 62, the lower limit of the 5-point quality band
+TARGET_BY_IMAGE = {}   # optional per-image target, e.g. {"buildings": 58.05} (file name without extension -> dB).
+                       # Empty = TARGET_WPSNR for every image. We may fill it on the challenge day, so that
+                       # this code gives exactly the images we upload.
+R_MIN = 32.0           # radial band of the DCT pairs
 R_MAX = 128.0
-N_BITS = 1024          # lunghezza del watermark assegnato
-WAVELET = "db4"        # wavelet della seconda parte
-DWT_LEVELS = 4         # livelli della decomposizione
-DWT_USE = (3, 4)       # livelli le cui sottobande di dettaglio ospitano il watermark
-K_DCT = 1.0            # ampiezza relativa della parte DCT
-K_DWT = 1.0            # ampiezza relativa della parte wavelet
-AMP_MIN, AMP_MAX = 0.2, 40.0   # intervallo di ricerca della scala
-N_ITER = 14                    # passi di bisezione
+N_BITS = 1024          # length of the assigned watermark
+WAVELET = "db4"        # wavelet of the second part
+DWT_LEVELS = 4         # levels of the decomposition
+DWT_USE = (3, 4)       # levels whose detail subbands host the watermark
+K_DCT = 1.0            # relative amplitude of the DCT part
+K_DWT = 1.0            # relative amplitude of the wavelet part
+AMP_MIN, AMP_MAX = 0.2, 40.0   # search interval of the scale
+N_ITER = 14                    # bisection steps
 
 
 # ----------------------------------------------------------------------------
-# WPSNR: copia identica del codice fornito ai laboratori
+# WPSNR: identical copy of the code provided in the labs
 # ----------------------------------------------------------------------------
 def _csffun(u, v):
     f = np.sqrt(u**2 + v**2)
@@ -103,7 +101,7 @@ def wpsnr(image_a, image_b):
 
 
 # ----------------------------------------------------------------------------
-# PARTE 1: DCT globale (identica alla v1.0)
+# PART 1: global DCT
 # ----------------------------------------------------------------------------
 def _dct2(x):
     return dctn(x, norm='ortho')
@@ -114,7 +112,7 @@ def _idct2(c):
 
 
 def _select_pairs(coeffs):
-    """N_BITS coppie (u,v),(u,v+1) [v pari] nella banda R_MIN<=r<=R_MAX con il min |coeff.| piu' grande."""
+    """N_BITS pairs (u,v),(u,v+1) [v even] in the band R_MIN<=r<=R_MAX with the largest min |coeff.|."""
     H, W = coeffs.shape
     u = np.arange(H)[:, None]
     v = np.arange(0, W - 1, 2)[None, :]
@@ -130,10 +128,10 @@ def _select_pairs(coeffs):
 
 
 # ----------------------------------------------------------------------------
-# PARTE 2: wavelet db4 (stesse coppie differenziali, dentro una sottobanda)
+# PART 2: db4 wavelet (same differential pairs, inside a subband)
 # ----------------------------------------------------------------------------
 def _dwt2(x):
-    """Coefficienti DWT (ortogonale, 'periodization': vale Parseval) messi in un unico array 512x512."""
+    """DWT coefficients (orthogonal, 'periodization': Parseval holds) put in a single 512x512 array."""
     arr, slices = pywt.coeffs_to_array(pywt.wavedec2(x, WAVELET, mode='periodization', level=DWT_LEVELS))
     return arr, slices
 
@@ -143,11 +141,11 @@ def _idwt2(arr, slices):
 
 
 def _select_pairs_dwt(arr, slices):
-    """N_BITS coppie orizzontali (i,j),(i,j+1) [j pari] dentro le sottobande di dettaglio dei
-    livelli DWT_USE, con il min |coeff.| piu' grande, ordinate per posizione."""
+    """N_BITS horizontal pairs (i,j),(i,j+1) [j even] inside the detail subbands of the
+    levels in DWT_USE, with the largest min |coeff.|, sorted by position."""
     m = np.zeros(arr.shape, bool)
     for lev in DWT_USE:
-        k = DWT_LEVELS - lev + 1           # in wavedec2 l'indice 1 e' il livello piu' grossolano
+        k = DWT_LEVELS - lev + 1           # in wavedec2 index 1 is the coarsest level
         for key in ('ad', 'da', 'dd'):
             m[slices[k][key]] = True
     ii, jj = np.nonzero(m[:, :-1] & m[:, 1:])
@@ -159,7 +157,7 @@ def _select_pairs_dwt(arr, slices):
 
 
 def _pair_pattern(c, ii, jj, w):
-    """Spinte ad ampiezza 1: +sgn(C1)*w sul primo coefficiente, -sgn(C2)*w sul secondo."""
+    """Pushes with amplitude 1: +sgn(C1)*w on the first coefficient, -sgn(C2)*w on the second."""
     s1 = np.where(c[ii, jj] < 0, -1.0, 1.0)
     s2 = np.where(c[ii, jj + 1] < 0, -1.0, 1.0)
     P = np.zeros_like(c)
@@ -169,7 +167,7 @@ def _pair_pattern(c, ii, jj, w):
 
 
 # ----------------------------------------------------------------------------
-# EMBEDDING (firma imposta dal regolamento)
+# EMBEDDING (signature required by the rules)
 # ----------------------------------------------------------------------------
 def embedding(input1, input2):
     original = cv2.imread(input1, cv2.IMREAD_GRAYSCALE)
@@ -182,13 +180,13 @@ def embedding(input1, input2):
     uu, vv = _select_pairs(c)
     arr, slices = _dwt2(o)
     ii, jj = _select_pairs_dwt(arr, slices)
-    # pattern del watermark nei pixel (somma delle due parti, entrambe lineari)
+    # watermark pattern in the pixels (sum of the two parts, both linear)
     pattern = K_DCT * _idct2(_pair_pattern(c, uu, vv, w)) + K_DWT * _idwt2(_pair_pattern(arr, ii, jj, w), slices)
 
     def marked(s):
         return np.clip(np.rint(o + s * pattern), 0, 255).astype(np.uint8)
 
-    # Calibrazione della scala: la piu' grande che mantiene WPSNR >= TARGET_WPSNR (bisezione logaritmica).
+    # Scale calibration: the largest one that keeps WPSNR >= TARGET_WPSNR (logarithmic bisection).
     lo, hi = AMP_MIN, AMP_MAX
     best = marked(lo)
     for _ in range(N_ITER):

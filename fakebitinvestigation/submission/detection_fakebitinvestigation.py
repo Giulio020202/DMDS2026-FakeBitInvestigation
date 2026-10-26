@@ -1,29 +1,30 @@
 """
-Capture the Mark 2026 - detection del gruppo fakebitinvestigation (versione 2.0, IBRIDA DCT + wavelet)
+Capture the Mark 2026 - detection, group fakebitinvestigation
 
-Detection NON-blind (p.5 del regolamento):
-  input1 = percorso dell'immagine originale
-  input2 = percorso dell'immagine watermarkata
-  input3 = percorso dell'immagine attaccata
-  output1 = 1 se il watermark e' presente nell'attaccata, 0 altrimenti
-  output2 = WPSNR(watermarkata, attaccata), con il codice dei lab
+Non-blind detection:
+  input1 = path of the original image
+  input2 = path of the watermarked image
+  input3 = path of the attacked image
+  output1 = 1 if the watermark is still in the attacked image, 0 otherwise
+  output2 = WPSNR(watermarked, attacked), with the lab code
 
-Come funziona (stessa logica della v1.0, con due parti):
-  1. dall'originale ricalcoliamo le 1024 coppie DCT e le 1024 coppie wavelet usate dall'embedding
-     (stesse funzioni, stesse costanti: devono restare IDENTICHE a quelle dell'embedding);
-  2. da un'immagine si estrae un vettore di 2048 valori: i 1024 della parte DCT seguiti dai 1024
-     della parte wavelet. W_ext = estratto dalla watermarkata, W_att = estratto dall'attaccata;
-     il watermark NON viene letto da file ne' scritto nel codice: viene estratto (p.5);
-  3. similarita' = massimo dei coseni tra W_ext e il vettore estratto da:
-     - l'attaccata;
-     - l'attaccata "de-stirata" (il resize dei lab puo' restituire un'immagine allungata di 1-2 pixel);
-     - l'attaccata con la pesatura spaziale 1 / (energia locale di (attaccata - originale) + EPS),
-       che dipende solo da attaccata e originale (nessun bias se il nostro watermark non c'e');
-  4. presente se similarita' >= TAU. La decisione dipende SOLO dalla similarita': il regolamento
-     aggiornato vieta di saltare la detection o di forzare output1 in base al WPSNR (anche < 25 dB).
+How it works:
+  1. from the original we find again the 1024 DCT pairs and the 1024 wavelet pairs chosen by the
+     embedding (same functions and same constants as embedding_fakebitinvestigation.py);
+  2. from an image we extract a vector of 2048 values (1024 from the DCT pairs, then 1024 from the
+     wavelet pairs). W_ext comes from the watermarked image and W_att from the attacked one, so the
+     watermark file is never read and the watermark is not written in the code;
+  3. the similarity is the maximum of the cosines between W_ext and the vectors extracted from:
+     - the attacked image as it is;
+     - the attacked image "de-stretched" (the lab resize can return an image stretched by 1-2 pixels);
+     - the attacked image with a spatial weighting 1 / (local energy of (attacked - original) + EPS),
+       which gives less weight to the areas destroyed by a localized attack. It only uses the attacked
+       image and the original, so it cannot create our watermark where there is none;
+  4. the watermark is present if similarity >= TAU. The decision only depends on the similarity,
+     the WPSNR is just returned as output2.
 
-Regole rispettate: file unico, nessun percorso relativo, nessuno script esterno, unica
-funzione "esterna" e' il WPSNR dei lab (copiato qui sotto), nessuna print, nessuna finestra.
+Single file: the only "external" function is the lab WPSNR, copied below. No relative paths,
+no other scripts, no prints and no windows.
 """
 import cv2
 import numpy as np
@@ -33,7 +34,7 @@ from scipy.ndimage import uniform_filter
 from scipy.signal import convolve2d
 
 # ----------------------------------------------------------------------------
-# PARAMETRI (devono coincidere con quelli di embedding_fakebitinvestigation.py)
+# PARAMETERS (the first six must be the same as in embedding_fakebitinvestigation.py)
 # ----------------------------------------------------------------------------
 R_MIN = 32.0
 R_MAX = 128.0
@@ -41,16 +42,16 @@ N_BITS = 1024
 WAVELET = "db4"
 DWT_LEVELS = 4
 DWT_USE = (3, 4)
-TAU = 0.087                     # ROC (roc_fakebitinvestigation.py, run completa del 19/10): 0.0867 = la soglia piu' alta tra
-                                # H0-R 0.0835, H0-A 0.0841, H0-B 0.0867 (FPR <= 0.1% su ciascuno), arrotondata per eccesso
-SQ_WIN = 16                     # finestra (pixel) della pesatura spaziale
-SQ_EPS = 0.5                    # regolarizzazione della pesatura spaziale
-STRETCH = (510, 511, 513, 514)  # dimensioni intermedie del resize dei lab da compensare
-C_FLOOR = 1.0                   # minimo |coefficiente| al denominatore dell'estrazione
+TAU = 0.087                     # from roc_fakebitinvestigation.py (full run): highest of the thresholds for FPR <= 0.1%
+                                # on H0-R (0.0835), H0-A (0.0841) and H0-B (0.0867), rounded up
+SQ_WIN = 16                     # window (pixels) of the spatial weighting
+SQ_EPS = 0.5                    # regularization of the spatial weighting
+STRETCH = (510, 511, 513, 514)  # intermediate sizes of the lab resize to compensate
+C_FLOOR = 1.0                   # minimum |coefficient| in the denominator of the extraction
 
 
 # ----------------------------------------------------------------------------
-# WPSNR: copia identica del codice fornito ai laboratori
+# WPSNR: identical copy of the code provided in the labs
 # ----------------------------------------------------------------------------
 def _csffun(u, v):
     f = np.sqrt(u**2 + v**2)
@@ -104,7 +105,7 @@ def wpsnr(image_a, image_b):
 
 
 # ----------------------------------------------------------------------------
-# FUNZIONI INTERNE (selezione identica all'embedding)
+# INTERNAL FUNCTIONS (selection identical to the embedding)
 # ----------------------------------------------------------------------------
 def _dct2(x):
     return dctn(x, norm='ortho')
@@ -145,8 +146,8 @@ def _select_pairs_dwt(arr, slices):
 
 
 def _pair_extract(c0, ii, jj, c1):
-    """W_i = [(X1/C1 - 1) - (X2/C2 - 1)] / (1/|C1| + 1/|C2|)  (0 esatto sull'originale),
-    in forma sicura s*(X - C)/max(|C|, C_FLOOR) come nella v1.0."""
+    """W_i = [(X1/C1 - 1) - (X2/C2 - 1)] / (1/|C1| + 1/|C2|), which is exactly 0 on the original.
+    Written as s*(X - C)/max(|C|, C_FLOOR) so that we never divide by zero."""
     a1, a2 = c0[ii, jj], c0[ii, jj + 1]
     s1 = np.where(a1 < 0, -1.0, 1.0)
     s2 = np.where(a2 < 0, -1.0, 1.0)
@@ -158,7 +159,7 @@ def _pair_extract(c0, ii, jj, c1):
 
 
 def _context(original):
-    """Tutto quello che dipende solo dall'originale: coefficienti e posizioni delle due parti."""
+    """Everything that depends only on the original: coefficients and positions of the two parts."""
     o = original.astype(np.float64)
     c0 = _dct2(o)
     uu, vv = _select_pairs(c0)
@@ -168,7 +169,7 @@ def _context(original):
 
 
 def _extract(ctx, img):
-    """Vettore di 2048 valori: parte DCT seguita dalla parte wavelet."""
+    """Vector of 2048 values: DCT part followed by the wavelet part."""
     c0, uu, vv, a0, ii, jj = ctx
     x = np.asarray(img, dtype=np.float64)
     return np.concatenate([_pair_extract(c0, uu, vv, _dct2(x)), _pair_extract(a0, ii, jj, _dwt2(x)[0])])
@@ -182,7 +183,7 @@ def _similarity(x, y):
 
 
 def _destretch(img, m):
-    """Inverte lo stiramento del resize dei lab quando l'immagine intermedia ha m pixel."""
+    """Inverts the stretching of the lab resize when the intermediate image has m pixels."""
     x = (np.arange(img.shape[0]) + 0.5) * m / img.shape[0] - 0.5
     mx, my = np.meshgrid(x, x)
     return cv2.remap(img.astype(np.float32), mx.astype(np.float32), my.astype(np.float32),
@@ -190,7 +191,7 @@ def _destretch(img, m):
 
 
 def _attacked_vectors(ctx, original, attacked):
-    """Vettori estratti dall'attaccata: normale, de-stirata (resize dei lab), pesata nello spazio."""
+    """Vectors extracted from the attacked image: normal, de-stretched (lab resize), spatially weighted."""
     o = original.astype(np.float64)
     a = attacked.astype(np.float64)
     vecs = [_extract(ctx, a)]
@@ -203,12 +204,12 @@ def _attacked_vectors(ctx, original, attacked):
 
 
 def _score(reference, vecs):
-    """Similarita' usata per la decisione: massimo dei coseni con le varianti."""
+    """Similarity used for the decision: maximum of the cosines with the variants."""
     return max(_similarity(reference, y) for y in vecs)
 
 
 # ----------------------------------------------------------------------------
-# DETECTION (firma imposta dal regolamento)
+# DETECTION (signature required by the rules)
 # ----------------------------------------------------------------------------
 def detection(input1, input2, input3):
     original = cv2.imread(input1, cv2.IMREAD_GRAYSCALE)
