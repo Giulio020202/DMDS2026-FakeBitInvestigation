@@ -68,27 +68,59 @@ TEST_EVERY = 10          # images with index % 10 >= 7 -> TEST set (30%), the ot
 
 
 # ----------------------------------------------------------------- attacks (lab)
+# Rounds and clips an image to valid gray levels, like a real BMP.
+#
+# @param x  image as a float array
+# @return   uint8 image (values in 0..255)
 def _u8(x):
     return np.clip(np.rint(x), 0, 255).astype(np.uint8)
 
 
+# Additive white gaussian noise.
+#
+# @param img   input image (uint8)
+# @param std   standard deviation of the noise, in gray levels
+# @param seed  seed of the random generator (same seed -> same noise)
+# @return      noisy image (uint8)
 def awgn(img, std, seed):
     return _u8(img.astype(float) + np.random.default_rng(seed).normal(0.0, std, img.shape))
 
 
+# Gaussian blur.
+#
+# @param img    input image (uint8)
+# @param sigma  standard deviation of the gaussian filter, in pixels
+# @return       blurred image (uint8)
 def blur(img, sigma):
     return _u8(gaussian_filter(img.astype(float), sigma))
 
 
+# Sharpening by unsharp masking: img + alpha * (img - blur(img, sigma)).
+#
+# @param img    input image (uint8)
+# @param sigma  standard deviation of the blur used for the mask
+# @param alpha  strength of the sharpening
+# @return       sharpened image (uint8)
 def sharpening(img, sigma, alpha):
     f = img.astype(float)
     return _u8(f + alpha * (f - gaussian_filter(f, sigma)))
 
 
+# Median filter (scipy medfilt, zero-padded borders, as in the labs).
+#
+# @param img  input image (uint8)
+# @param k    size of the (odd) square window
+# @return     filtered image (uint8)
 def median(img, k):
     return _u8(medfilt(img.astype(float), k))
 
 
+# Lab resize: rescale down by 'scale' and up again with skimage, then crop to the original size
+# (if the result is smaller, the last row/column is repeated).
+#
+# @param img    input image (uint8)
+# @param scale  scale factor of the first rescale (0 < scale < 1)
+# @return       resized image with the original size (uint8)
 def resizing(img, scale):
     x, y = img.shape
     a = rescale(img.astype(float), scale)
@@ -98,6 +130,11 @@ def resizing(img, scale):
     return _u8(a)
 
 
+# JPEG compression and decompression in memory (Pillow), no file is written.
+#
+# @param img  input image (uint8)
+# @param qf   JPEG quality factor (1..100)
+# @return     decompressed image (uint8)
 def jpeg_compression(img, qf):
     buf = io.BytesIO()
     Image.fromarray(img).save(buf, "JPEG", quality=int(qf))
@@ -105,6 +142,11 @@ def jpeg_compression(img, qf):
     return np.asarray(Image.open(buf), dtype=np.uint8)
 
 
+# Mask of the smoothest zones of an image (lowest local standard deviation on 16x16 windows).
+#
+# @param img  image the mask is computed from
+# @param q    fraction of the image to select (0..1)
+# @return     boolean mask, same shape as img
 def _smooth_mask(img, q):
     f = img.astype(float)
     m = uniform_filter(f, 16)
@@ -112,9 +154,13 @@ def _smooth_mask(img, q):
     return sd <= np.quantile(sd, q)
 
 
+# Picks a random attack among the allowed ones, with random parameters. It returns a function, so
+# that exactly the same attack can be applied to several images (watermarked, original,
+# watermarked by another group).
+#
+# @param rng  numpy random generator (np.random.default_rng) used to draw the attack and its parameters
+# @return     (function, name): function image -> attacked image (uint8), and a short name of the attack
 def random_attack(rng):
-    """Picks a random attack among the allowed ones and returns (function, name): the same
-    function is applied to several images (watermarked, original, watermarked by another group)."""
     k = rng.integers(10)
     if k == 0:
         q = int(rng.integers(3, 95)); return (lambda x: jpeg_compression(x, q)), "jpeg"
@@ -136,6 +182,10 @@ def random_attack(rng):
     if k == 8:   # localized on the smooth zones (mask computed from the attacked image itself)
         qm, q = rng.uniform(0.3, 0.7), int(rng.integers(2, 20))
 
+        # JPEG applied only on the smooth zones of the image it receives.
+        #
+        # @param x  image to attack (uint8)
+        # @return   attacked image (uint8): JPEG inside the mask, x unchanged outside
         def f(x):
             m = _smooth_mask(x, qm)
             out = x.copy()
@@ -146,6 +196,14 @@ def random_attack(rng):
 
 
 # ----------------------------------------------------------------- one image
+# Computes all the ROC samples of one image: embedding of our watermark and of a random one
+# ("another group"), then n_att random attacks; for each attack one H1 score, N_RANDOM H0-R scores,
+# one H0-A score and one H0-B score. It runs in a separate process of the Pool.
+#
+# @param args  tuple (path, n_att, seed, watermark): path of the image, number of attacks,
+#              seed of the random generator, path of our .npy watermark
+# @return      (scores, kinds, wps): lists with the similarity of each sample, its kind
+#              ('H1', 'H0-R', 'H0-A', 'H0-B') and the WPSNR of the attacked image
 def _one_image(args):
     path, n_att, seed, watermark = args
     rng = np.random.default_rng(seed)
@@ -179,13 +237,23 @@ def _one_image(args):
     return scores, kinds, wps
 
 
+# The lowest threshold with FPR <= fpr_target: at most floor(fpr_target * n) H0 samples are at or
+# above the threshold.
+#
+# @param h0          scores of the H0 samples (array)
+# @param fpr_target  highest false positive rate allowed (e.g. 0.001)
+# @return            threshold tau (float)
 def _tau(h0, fpr_target):
-    """The lowest threshold with FPR <= fpr_target: at most floor(fpr_target * n) H0 samples above the threshold."""
     h0s = np.sort(h0)
     m = int(np.floor(fpr_target * len(h0s)))
     return float(np.nextafter(h0s[len(h0s) - m - 1], np.inf))
 
 
+# Runs the whole ROC procedure: samples of all the images in parallel, split into calibration and
+# test, tau on the calibration, FPR and TPR on the test, results printed and ROC curve saved as .png.
+#
+# The options are read from the command line (see the usage above), so the function has no parameters.
+# @return  None
 def main():
     ap = argparse.ArgumentParser(description="ROC and threshold tau of group fakebitinvestigation (v2.0)")
     ap.add_argument("--images", default=IMAGES)
@@ -217,6 +285,10 @@ def main():
     print(f"{len(files)} images ({len(files) - len(test_set)} calibration, {len(test_set)} test), {n_att} attacks "
           f"each, {N_RANDOM} random watermarks per attack, {time.time() - t0:.0f}s")
 
+    # Puts together the samples of a subset of the images.
+    #
+    # @param sel  indices (in res) of the results to merge
+    # @return     (sc, kd, wp): arrays with the scores, the kinds and the WPSNR of all the samples
     def gather(sel):
         sc = np.concatenate([np.asarray(res[j][0]) for j in sel])
         kd = np.concatenate([np.asarray(res[j][1]) for j in sel])

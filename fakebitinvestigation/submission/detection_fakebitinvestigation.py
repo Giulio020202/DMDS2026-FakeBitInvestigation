@@ -53,6 +53,11 @@ C_FLOOR = 1.0                   # minimum |coefficient| in the denominator of th
 # ----------------------------------------------------------------------------
 # WPSNR: identical copy of the code provided in the labs
 # ----------------------------------------------------------------------------
+# Contrast Sensitivity Function (CSF) of the lab WPSNR, evaluated at the spatial frequencies (u, v).
+#
+# @param u  horizontal frequencies (array)
+# @param v  vertical frequencies (array, same shape as u)
+# @return   sensitivity of the eye at each frequency (array, same shape as u)
 def _csffun(u, v):
     f = np.sqrt(u**2 + v**2)
     w = 2 * np.pi * f / 60
@@ -67,6 +72,9 @@ def _csffun(u, v):
     return Sw * Ow
 
 
+# Samples the CSF on the integer frequency grid -20..20 x -20..20.
+#
+# @return  41x41 matrix of the CSF in the frequency domain
 def _csfmat():
     min_f, max_f, step_f = -20, 20, 1
     freq_range = np.arange(min_f, max_f + step_f, step_f)
@@ -74,12 +82,20 @@ def _csfmat():
     return _csffun(u, v)
 
 
+# Turns the CSF matrix into the spatial filter used by the WPSNR (inverse FFT, real part).
+#
+# @return  41x41 spatial filter (float array)
 def _get_csf_filter():
     Fmat = _csfmat()
     filter_coeffs = np.fft.ifftshift(np.fft.ifft2(np.fft.ifftshift(Fmat)))
     return np.real(filter_coeffs)
 
 
+# WPSNR of the labs: PSNR of the difference between the two images, filtered with the CSF.
+#
+# @param image_a  first image (integers in 0..255, or floats in 0..1)
+# @param image_b  second image, same shape as image_a
+# @return         WPSNR in dB (9999999.0 if the two images are identical)
 def wpsnr(image_a, image_b):
     if image_a.shape != image_b.shape:
         raise ValueError("Input images must have the same dimensions.")
@@ -107,10 +123,19 @@ def wpsnr(image_a, image_b):
 # ----------------------------------------------------------------------------
 # INTERNAL FUNCTIONS (selection identical to the embedding)
 # ----------------------------------------------------------------------------
+# Global 2D DCT of the whole image (orthonormal).
+#
+# @param x  image as a float array
+# @return   DCT coefficients, same shape as x
 def _dct2(x):
     return dctn(x, norm='ortho')
 
 
+# Finds again the DCT pairs chosen by the embedding: the N_BITS pairs (u,v),(u,v+1), with v even,
+# in the radial band R_MIN <= r <= R_MAX that have the largest min(|C1|, |C2|), sorted by position.
+#
+# @param coeffs  DCT coefficients of the original image
+# @return        (uu, vv): row and column of the first coefficient of each pair (arrays of N_BITS ints)
 def _select_pairs(coeffs):
     H, W = coeffs.shape
     u = np.arange(H)[:, None]
@@ -126,11 +151,23 @@ def _select_pairs(coeffs):
     return uu[best], vv[best]
 
 
+# Wavelet decomposition (WAVELET, DWT_LEVELS levels, 'periodization'), with all the coefficients
+# put in a single 512x512 array, exactly as in the embedding.
+#
+# @param x  image as a float array
+# @return   (arr, slices): array of the coefficients and the slices of each subband inside it
 def _dwt2(x):
     arr, slices = pywt.coeffs_to_array(pywt.wavedec2(x, WAVELET, mode='periodization', level=DWT_LEVELS))
     return arr, slices
 
 
+# Finds again the wavelet pairs chosen by the embedding: the N_BITS horizontal pairs (i,j),(i,j+1),
+# with j even, inside the detail subbands of the levels in DWT_USE, that have the largest
+# min(|C1|, |C2|), sorted by position.
+#
+# @param arr     wavelet coefficients of the original image (output of _dwt2)
+# @param slices  slices of the subbands (output of _dwt2)
+# @return        (ii, jj): row and column of the first coefficient of each pair (arrays of N_BITS ints)
 def _select_pairs_dwt(arr, slices):
     m = np.zeros(arr.shape, bool)
     for lev in DWT_USE:
@@ -145,9 +182,15 @@ def _select_pairs_dwt(arr, slices):
     return ii[best], jj[best]
 
 
+# Extracts one value per pair: W_i = [(X1/C1 - 1) - (X2/C2 - 1)] / (1/|C1| + 1/|C2|), which is
+# exactly 0 on the original. Written as s*(X - C)/max(|C|, C_FLOOR) so that we never divide by zero.
+#
+# @param c0  coefficients of the original image (C)
+# @param ii  rows of the first coefficient of each pair
+# @param jj  columns of the first coefficient of each pair (the second one is at jj + 1)
+# @param c1  coefficients of the image we extract from (X), same transform as c0
+# @return    extracted values, one per pair (float array)
 def _pair_extract(c0, ii, jj, c1):
-    """W_i = [(X1/C1 - 1) - (X2/C2 - 1)] / (1/|C1| + 1/|C2|), which is exactly 0 on the original.
-    Written as s*(X - C)/max(|C|, C_FLOOR) so that we never divide by zero."""
     a1, a2 = c0[ii, jj], c0[ii, jj + 1]
     s1 = np.where(a1 < 0, -1.0, 1.0)
     s2 = np.where(a2 < 0, -1.0, 1.0)
@@ -158,8 +201,12 @@ def _pair_extract(c0, ii, jj, c1):
     return (r1 - r2) / (1.0 / m1 + 1.0 / m2)
 
 
+# Computes everything that depends only on the original, so that it is done once per detection.
+#
+# @param original  original image (uint8 512x512)
+# @return          tuple (c0, uu, vv, a0, ii, jj): DCT coefficients and DCT pairs, wavelet
+#                  coefficients and wavelet pairs of the original
 def _context(original):
-    """Everything that depends only on the original: coefficients and positions of the two parts."""
     o = original.astype(np.float64)
     c0 = _dct2(o)
     uu, vv = _select_pairs(c0)
@@ -168,13 +215,22 @@ def _context(original):
     return c0, uu, vv, a0, ii, jj
 
 
+# Extracts the watermark vector from an image: DCT part followed by the wavelet part.
+#
+# @param ctx  context of the original (output of _context)
+# @param img  image to extract from (512x512, any numeric type)
+# @return     vector of 2 * N_BITS = 2048 values
 def _extract(ctx, img):
-    """Vector of 2048 values: DCT part followed by the wavelet part."""
     c0, uu, vv, a0, ii, jj = ctx
     x = np.asarray(img, dtype=np.float64)
     return np.concatenate([_pair_extract(c0, uu, vv, _dct2(x)), _pair_extract(a0, ii, jj, _dwt2(x)[0])])
 
 
+# Cosine similarity between two vectors.
+#
+# @param x  first vector
+# @param y  second vector, same length as x
+# @return   cosine of the angle between x and y (0.0 if one of the two is the null vector)
 def _similarity(x, y):
     nx, ny = np.linalg.norm(x), np.linalg.norm(y)
     if nx == 0 or ny == 0:
@@ -182,17 +238,28 @@ def _similarity(x, y):
     return float(np.dot(x, y) / (nx * ny))
 
 
+# Inverts the stretching of the lab resize when the intermediate image has m pixels instead of 512
+# (bicubic remap with replicated borders).
+#
+# @param img  attacked image (512x512)
+# @param m    size in pixels of the image before the lab resize cropped/padded it (e.g. 510..514)
+# @return     de-stretched image (float64 512x512)
 def _destretch(img, m):
-    """Inverts the stretching of the lab resize when the intermediate image has m pixels."""
-    x = (np.arange(img.shape[0]) + 0.5) * m / img.shape[0] - 0.5
+    x =(np.arange(img.shape[0]) + 0.5) * m / img.shape[0] - 0.5
     mx, my = np.meshgrid(x, x)
     return cv2.remap(img.astype(np.float32), mx.astype(np.float32), my.astype(np.float32),
                      cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE).astype(np.float64)
 
 
+# Extracts all the variants of the vector from the attacked image: normal, de-stretched (one for
+# each size in STRETCH) and spatially weighted (rho = 1 / (local energy of (attacked - original) + SQ_EPS)).
+#
+# @param ctx       context of the original (output of _context)
+# @param original  original image (uint8 512x512)
+# @param attacked  attacked image (uint8 512x512)
+# @return          list of 2 + len(STRETCH) vectors of 2048 values
 def _attacked_vectors(ctx, original, attacked):
-    """Vectors extracted from the attacked image: normal, de-stretched (lab resize), spatially weighted."""
-    o = original.astype(np.float64)
+    o =original.astype(np.float64)
     a = attacked.astype(np.float64)
     vecs = [_extract(ctx, a)]
     for m in STRETCH:
@@ -203,14 +270,26 @@ def _attacked_vectors(ctx, original, attacked):
     return vecs
 
 
+# Similarity used for the decision: maximum of the cosines between the reference and the variants.
+#
+# @param reference  reference vector (W_ext, extracted from the watermarked image)
+# @param vecs       vectors extracted from the attacked image (output of _attacked_vectors)
+# @return           highest cosine similarity (float)
 def _score(reference, vecs):
-    """Similarity used for the decision: maximum of the cosines with the variants."""
     return max(_similarity(reference, y) for y in vecs)
 
 
 # ----------------------------------------------------------------------------
 # DETECTION (signature required by the rules)
 # ----------------------------------------------------------------------------
+# Non-blind detection: compares W_ext (from the watermarked image) with the vectors extracted from
+# the attacked image and says whether the watermark is still there (similarity >= TAU).
+#
+# @param input1  path of the original image
+# @param input2  path of the watermarked image
+# @param input3  path of the attacked image
+# @return        (output1, output2): output1 = 1 if the watermark is present, 0 otherwise;
+#                output2 = WPSNR(watermarked, attacked) in dB, with the lab code
 def detection(input1, input2, input3):
     original = cv2.imread(input1, cv2.IMREAD_GRAYSCALE)
     watermarked = cv2.imread(input2, cv2.IMREAD_GRAYSCALE)

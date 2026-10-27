@@ -72,6 +72,11 @@ from skimage.transform import rescale
 # ----------------------------------------------------------------------------
 # WPSNR: identical copy of the code provided in the labs
 # ----------------------------------------------------------------------------
+# Contrast Sensitivity Function (CSF) of the lab WPSNR, evaluated at the spatial frequencies (u, v).
+#
+# @param u  horizontal frequencies (array)
+# @param v  vertical frequencies (array, same shape as u)
+# @return   sensitivity of the eye at each frequency (array, same shape as u)
 def _csffun(u, v):
     f = np.sqrt(u**2 + v**2)
     w = 2 * np.pi * f / 60
@@ -86,6 +91,9 @@ def _csffun(u, v):
     return Sw * Ow
 
 
+# Samples the CSF on the integer frequency grid -20..20 x -20..20.
+#
+# @return  41x41 matrix of the CSF in the frequency domain
 def _csfmat():
     min_f, max_f, step_f = -20, 20, 1
     freq_range = np.arange(min_f, max_f + step_f, step_f)
@@ -93,12 +101,20 @@ def _csfmat():
     return _csffun(u, v)
 
 
+# Turns the CSF matrix into the spatial filter used by the WPSNR (inverse FFT, real part).
+#
+# @return  41x41 spatial filter (float array)
 def _get_csf_filter():
     Fmat = _csfmat()
     filter_coeffs = np.fft.ifftshift(np.fft.ifft2(np.fft.ifftshift(Fmat)))
     return np.real(filter_coeffs)
 
 
+# WPSNR of the labs: PSNR of the difference between the two images, filtered with the CSF.
+#
+# @param image_a  first image (integers in 0..255, or floats in 0..1)
+# @param image_b  second image, same shape as image_a
+# @return         WPSNR in dB (9999999.0 if the two images are identical)
 def wpsnr(image_a, image_b):
     if image_a.shape != image_b.shape:
         raise ValueError("Input images must have the same dimensions.")
@@ -123,6 +139,10 @@ def wpsnr(image_a, image_b):
     return 20 * np.log10(1.0 / np.sqrt(wmse))
 
 
+# Rounds and clips an image to valid gray levels, like a real BMP.
+#
+# @param x  image as a float array
+# @return   uint8 image (values in 0..255)
 def _u8(x):
     return np.clip(np.rint(x), 0, 255).astype(np.uint8)
 
@@ -130,20 +150,42 @@ def _u8(x):
 # ----------------------------------------------------------------------------
 # BASE ATTACKS
 # ----------------------------------------------------------------------------
+# Additive white gaussian noise.
+#
+# @param img   input image (uint8)
+# @param std   standard deviation of the noise, in gray levels
+# @param seed  seed of the random generator (same seed -> same noise, so the attack is reproducible)
+# @return      noisy image (uint8)
 def awgn(img, std, seed=123):
     rng = np.random.default_rng(seed)
     return _u8(img.astype(float) + rng.normal(0.0, std, img.shape))
 
 
+# Gaussian blur.
+#
+# @param img    input image (uint8)
+# @param sigma  standard deviation of the gaussian filter in pixels, or a pair (sy, sx) for an anisotropic blur
+# @return       blurred image (uint8)
 def blur(img, sigma):
     return _u8(gaussian_filter(img.astype(float), sigma))
 
 
+# Sharpening by unsharp masking: img + alpha * (img - blur(img, sigma)).
+#
+# @param img    input image (uint8)
+# @param sigma  standard deviation of the blur used for the mask
+# @param alpha  strength of the sharpening
+# @return       sharpened image (uint8)
 def sharpening(img, sigma, alpha):
     f = img.astype(float)
     return _u8(f + alpha * (f - gaussian_filter(f, sigma)))
 
 
+# JPEG compression and decompression in memory (Pillow), no file is written.
+#
+# @param img  input image (uint8)
+# @param qf   JPEG quality factor (1..100)
+# @return     decompressed image (uint8)
 def jpeg_compression(img, qf):
     buf = io.BytesIO()
     Image.fromarray(img).save(buf, "JPEG", quality=int(qf))
@@ -151,10 +193,14 @@ def jpeg_compression(img, qf):
     return np.asarray(Image.open(buf), dtype=np.uint8)
 
 
+# Lab resize: rescale down and up with skimage, then crop to 512x512.
+# For some scales (e.g. 0.7) the result is a bit smaller: we repeat the last row/column,
+# so that the WPSNR can always be computed.
+#
+# @param img    input image (uint8)
+# @param scale  scale factor of the first rescale (0 < scale < 1)
+# @return       resized image with the original size (uint8)
 def resizing(img, scale):
-    """Lab resize: rescale down and up with skimage, then crop to 512x512.
-    For some scales (e.g. 0.7) the result is a bit smaller: we repeat the last row/column,
-    so that the WPSNR can always be computed."""
     x, y = img.shape
     a = rescale(img.astype(float), scale)
     a = rescale(a, 1 / scale)[:x, :y]
@@ -166,13 +212,23 @@ def resizing(img, scale):
 _CV_INTERP = {"cubic": cv2.INTER_CUBIC, "linear": cv2.INTER_LINEAR, "area": cv2.INTER_AREA}
 
 
+# Resize with OpenCV: down with INTER_AREA, then back to the original size with the chosen method.
+#
+# @param img     input image (uint8)
+# @param scale   scale factor of the first resize (0 < scale < 1)
+# @param method  interpolation used to go back up: 'cubic', 'linear' or 'area' (keys of _CV_INTERP)
+# @return        resized image with the original size (uint8)
 def resizing_cv(img, scale, method="cubic"):
-    """Resize with OpenCV: down with INTER_AREA, up with the chosen method."""
     h, w = img.shape
     s = cv2.resize(img, (int(round(w * scale)), int(round(h * scale))), interpolation=cv2.INTER_AREA)
     return _u8(cv2.resize(s, (w, h), interpolation=_CV_INTERP[method]))
 
 
+# Median filter with reflected borders (scipy median_filter).
+#
+# @param img  input image (uint8)
+# @param k    size of the window: k for a k x k window, or a pair (ky, kx) for a rectangular one
+# @return     filtered image (uint8)
 def median(img, k):
     return median_filter(img, size=k)
 
@@ -190,35 +246,58 @@ ATTACKS = {
 # ----------------------------------------------------------------------------
 # MASKS (computed ONLY from the watermarked image)
 # ----------------------------------------------------------------------------
+# Local standard deviation of the image, computed on a sliding b x b window.
+#
+# @param img  input image
+# @param b    side of the window, in pixels
+# @return     local standard deviation of every pixel (float array, same shape as img)
 def _block_std(img, b):
     f = img.astype(float)
     m = uniform_filter(f, b)
     return np.sqrt(np.maximum(uniform_filter(f * f, b) - m * m, 0))
 
 
+# The fraction q of the image that is smoothest (lowest local standard deviation).
+# In our tests the best attacks against our own scheme were localized on these zones.
+#
+# @param wm  watermarked image (the only image the mask is computed from)
+# @param q   fraction of the image to select (0..1)
+# @param b   side of the window of the local standard deviation
+# @return    boolean mask, same shape as wm
 def smooth_mask(wm, q=0.5, b=16):
-    """The fraction q of the image that is smoothest (lowest local standard deviation).
-    In our tests the best attacks against our own scheme were localized on these zones."""
     sd = _block_std(wm, b)
     return sd <= np.quantile(sd, q)
 
 
+# The fraction q of the image that is most textured (highest local standard deviation).
+#
+# @param wm  watermarked image (the only image the mask is computed from)
+# @param q   fraction of the image to select (0..1)
+# @param b   side of the window of the local standard deviation
+# @return    boolean mask, same shape as wm
 def textured_mask(wm, q=0.5, b=16):
-    """The fraction q of the image that is most textured."""
     sd = _block_std(wm, b)
     return sd >= np.quantile(sd, 1 - q)
 
 
+# The fraction q of the image with the strongest edges (magnitude of the Sobel gradient, smoothed).
+#
+# @param wm  watermarked image (the only image the mask is computed from)
+# @param q   fraction of the image to select (0..1)
+# @return    boolean mask, same shape as wm
 def edge_mask(wm, q=0.3):
-    """The fraction q of the image with the strongest edges (Sobel gradient)."""
     f = wm.astype(float)
     g = gaussian_filter(np.hypot(cv2.Sobel(f, cv2.CV_64F, 1, 0), cv2.Sobel(f, cv2.CV_64F, 0, 1)), 2)
     return g >= np.quantile(g, 1 - q)
 
 
+# Like smooth_mask but made of whole 8x8 blocks, aligned to the JPEG grid
+# (a JPEG localized this way leaves no "half" blocks).
+#
+# @param wm  watermarked image (the only image the mask is computed from)
+# @param q   fraction of the 8x8 blocks to select (0..1)
+# @return    boolean mask, same shape as wm
 def smooth_blocks8_mask(wm, q=0.5):
-    """Like smooth_mask but made of whole 8x8 blocks, aligned to the JPEG grid
-    (a JPEG localized this way leaves no "half" blocks)."""
     sd8 = _block_std(wm, 8)[4::8, 4::8]
     return np.kron(sd8 <= np.quantile(sd8, q), np.ones((8, 8), bool))
 
@@ -237,6 +316,15 @@ MASKS = {
 # ----------------------------------------------------------------------------
 # MAIN FUNCTION
 # ----------------------------------------------------------------------------
+# Applies one allowed attack, or a chain of attacks in the given order, to the watermarked image,
+# optionally only inside a mask (see the interface at the top of the file).
+#
+# @param input1       path of the watermarked image, or the image itself (uint8 512x512 array)
+# @param attack_name  name of an attack (key of ATTACKS) or a list of names (chain)
+# @param param_array  parameters of the attack (list); for a chain, one list of parameters per attack
+# @param mask         optional boolean 512x512 mask: the attack is kept only there, outside the
+#                     watermarked image stays unchanged (None = whole image)
+# @return             attacked image (uint8 512x512 array)
 def attacks(input1, attack_name, param_array, mask=None):
     wm = cv2.imread(input1, 0) if isinstance(input1, str) else np.asarray(input1, dtype=np.uint8)
     if isinstance(attack_name, str):
@@ -259,13 +347,21 @@ def attacks(input1, attack_name, param_array, mask=None):
     return out
 
 
+# Writes a number or a pair in readable form: 0.8 -> '0.8', (1, 7) -> '1x7'.
+#
+# @param v  number, or tuple/list of numbers
+# @return   text (str)
 def _fmt(v):
-    """Number or pair in readable form: 0.8 -> '0.8', (1, 7) -> '1x7'."""
     if isinstance(v, (tuple, list)):
         return "x".join(_fmt(x) for x in v)
     return f"{v:g}" if isinstance(v, float) else str(v)
 
 
+# Description of a single attack with its parameters, e.g. 'JPEG QF=12' or 'Median 3x3'.
+#
+# @param name  name of the attack (key of ATTACKS)
+# @param p     parameters of the attack (list)
+# @return      text (str)
 def _describe_one(name, p):
     if name == "jpeg":
         return f"JPEG QF={p[0]}"
@@ -283,9 +379,14 @@ def _describe_one(name, p):
     return f"{name} {list(p)}"
 
 
+# Text for the challenge log, in the style of the example of the rules ('JPEG QF=90, Median 5x5'),
+# with the attacks in the order they are applied, e.g. 'Blur sigma=0.6, JPEG QF=12 (only zone smooth50)'.
+#
+# @param attack_name  name of an attack or list of names (same as in attacks())
+# @param param_array  parameters (same as in attacks())
+# @param mask_name    name of the zone (key of MASKS) if the attack is localized, None otherwise
+# @return             text (str)
 def describe(attack_name, param_array, mask_name=None):
-    """Text for the challenge log, in the style of the example of the rules ('JPEG QF=90, Median 5x5'),
-    with the attacks in the order they are applied, e.g. 'Blur sigma=0.6, JPEG QF=12 (only zone smooth50)'."""
     if isinstance(attack_name, str):
         attack_name, param_array = [attack_name], [param_array]
     s = ", ".join(_describe_one(n, list(p)) for n, p in zip(attack_name, param_array))
@@ -349,6 +450,11 @@ GREEDY_BLOCKS = (64, 32)
 _H = None
 
 
+# Fast WPSNR (see above). The FFT of the CSF filter is computed at the first call and kept in _H.
+#
+# @param a  first image (512x512, values in 0..255)
+# @param b  second image (512x512, values in 0..255)
+# @return   WPSNR in dB (9999999.0 if the two images are identical)
 def wpsnr_fast(a, b):
     global _H
     if _H is None:
@@ -366,19 +472,37 @@ def wpsnr_fast(a, b):
 # ----------------------------------------------------------------------------
 # ORACLE: the detection of the attacked group, with timeout and error handling
 # ----------------------------------------------------------------------------
+# Error that stops the attack of one image (detection not usable, image not valid, too many errors).
 class OracleError(Exception):
     pass
 
 
+# Raised by _on_alarm when a call to the detection takes longer than the timeout.
 class _Timeout(Exception):
     pass
 
 
+# Handler of SIGALRM: interrupts the call to the detection that is running.
+#
+# @param signum  number of the signal (not used)
+# @param frame   current stack frame (not used)
+# @return        never returns, it always raises _Timeout
 def _on_alarm(signum, frame):
     raise _Timeout()
 
 
+# The detection of the attacked group, used as an oracle: it tells whether an attacked image is
+# "broken" (watermark absent). It loads the detection file, hides its prints, stops it on timeout,
+# counts calls and errors and remembers the images it has already seen.
 class Oracle:
+    # Loads the detection of the attacked group and prepares the oracle.
+    #
+    # @param det_path   path of the detection file of the attacked group (.py or .pyc)
+    # @param orig_path  path of the original image: it is only passed to their detection, as input1
+    # @param wm_path    path of their watermarked image, passed to their detection as input2
+    # @param tmpdir     temporary folder where the attacked image is saved before each call
+    # @param timeout    maximum seconds for one call to the detection
+    # @throws OracleError if the file does not define detection()
     def __init__(self, det_path, orig_path, wm_path, tmpdir, timeout):
         spec = importlib.util.spec_from_file_location(f"det_{os.getpid()}_{time.time_ns()}", det_path)
         mod = importlib.util.module_from_spec(spec)
@@ -394,9 +518,14 @@ class Oracle:
         self.cache = {}                                # same image -> same outcome, no call
         signal.signal(signal.SIGALRM, _on_alarm)
 
+    # Asks the detection whether the watermark is still in the attacked image. The image is saved as
+    # BMP first, like the one we would upload. To be safe, an error or a timeout of the detection
+    # counts as 'not broken'.
+    #
+    # @param att  attacked image (uint8 512x512)
+    # @return     True if the detection says 'absent' (output1 == 0), False otherwise
+    # @throws OracleError after MAX_ERRORS consecutive errors (see _fail)
     def broken(self, att):
-        """True if the detection says 'absent'. The image is saved as BMP first, like the one we would upload.
-        To be safe, an error or a timeout of the detection counts as 'not broken'."""
         key = att.tobytes()
         if key in self.cache:
             return self.cache[key]
@@ -417,6 +546,11 @@ class Oracle:
         self.cache[key] = res
         return res
 
+    # Records an error of the detection.
+    #
+    # @param msg  description of the error
+    # @return     False (the image counts as 'not broken')
+    # @throws OracleError if this is the MAX_ERRORS-th error in a row
     def _fail(self, msg):
         self.errors += 1
         self.consecutive += 1
@@ -426,8 +560,17 @@ class Oracle:
         return False
 
 
+# Searches the lightest attack of one family that breaks the image: first the grid values that stay
+# above MIN_WPSNR, then a binary search on them, then a refinement between the last value that does
+# not break and the first one that breaks.
+#
+# @param oracle    Oracle of the attacked group
+# @param wm        watermarked image (uint8 512x512)
+# @param fam       name of the family (key of FAMILIES)
+# @param mask      optional boolean mask of the zone to attack (None = whole image)
+# @param deadline  time (time.time()) after which the search stops and keeps what it found (None = no limit)
+# @return          (wpsnr, names, params) of the lightest attack found, or None if the family does not break
 def search(oracle, wm, fam, mask=None, deadline=None):
-    """Lightest attack of the family that breaks. Returns (wpsnr, names, params) or None."""
     names, to_params, grid, kind = FAMILIES[fam]
     make = lambda p: attacks(wm, names, to_params(p), mask=mask)      # noqa: E731
 
@@ -470,10 +613,16 @@ def search(oracle, wm, fam, mask=None, deadline=None):
     return wpsnr(wm, attacks(wm, names, params, mask=mask)), names, params
 
 
+# Gives back to the watermarked image the blocks that are not needed to break it (first 64x64,
+# then 32x32), trying the most modified blocks first, so that the WPSNR goes up.
+#
+# @param oracle    Oracle of the attacked group
+# @param wm        watermarked image (uint8 512x512)
+# @param att       attacked image that already breaks the watermark (uint8 512x512)
+# @param deadline  time (time.time()) after which the function stops and returns what it has
+# @return          (image, keep): the new attacked image and the boolean mask of the pixels where the
+#                  attack stayed, so the attack is reproducible (base attack, then watermarked image outside keep)
 def greedy_blocks(oracle, wm, att, deadline):
-    """Gives back to the watermarked image the blocks that are not needed (first 64x64, then 32x32).
-    Returns (image, keep): keep = mask of the pixels where the attack stayed, so
-    the attack is reproducible (base attack, then watermarked image outside keep)."""
     cur = att.copy()
     keep = np.ones(wm.shape, bool)
     for b in GREEDY_BLOCKS:
@@ -492,13 +641,23 @@ def greedy_blocks(oracle, wm, att, deadline):
     return cur, keep
 
 
+# Attacks ONE watermarked image of another group (<group>_<imageName>.bmp) and saves in out_dir
+# the successful one with the highest WPSNR as fakebitinvestigation_<group>_<imageName>.bmp (+ PNG of
+# the zones if the greedy was used). The original (orig_path) is NEVER read here: only the
+# detection of the attacked group receives it, as input1. It never raises exceptions: the errors
+# end up in res['error'].
+#
+# @param wm_path     path of the watermarked image of the other group (<group>_<imageName>.bmp)
+# @param orig_path   path of the original image (passed only to their detection)
+# @param det_path    path of the detection of the attacked group (.py or .pyc)
+# @param out_dir     folder where the attacked image (and the PNG of the zones) is saved
+# @param budget      seconds available for this image
+# @param use_greedy  True to run greedy_blocks after the search
+# @param timeout     maximum seconds for one call to their detection
+# @return            dictionary with the outcome: image, group, wpsnr and desc of the saved attack
+#                    (None if not broken), found (all the successful attacks), calls, errors, error, time
 def attack_image(wm_path, orig_path, det_path, out_dir, budget=600, use_greedy=True, timeout=10):
-    """Attacks ONE watermarked image of another group (<group>_<imageName>.bmp) and saves in out_dir
-    the successful one with the highest WPSNR as fakebitinvestigation_<group>_<imageName>.bmp (+ PNG of the zones
-    if the greedy was used). The original (orig_path) is NEVER read here: only the
-    detection of the attacked group receives it, as input1. budget = seconds available.
-    Returns a dictionary with the outcome; never raises exceptions (errors end up in res['error'])."""
-    fname = os.path.basename(wm_path)
+    fname =os.path.basename(wm_path)
     group, image = fname[:-4].split("_", 1)
     t0 = time.time()
     res = {"image": image, "group": group, "wpsnr": None, "desc": None, "found": [], "calls": 0,
@@ -559,10 +718,19 @@ def attack_image(wm_path, orig_path, det_path, out_dir, budget=600, use_greedy=T
 # ----------------------------------------------------------------------------
 # COMMAND LINE
 # ----------------------------------------------------------------------------
+# Converts a parameter of the command line to a number.
+#
+# @param x  text of the parameter (e.g. '12' or '0.6')
+# @return   int if x is an integer, float otherwise
 def _num(x):
     return int(x) if x.lstrip("-").isdigit() else float(x)
 
 
+# Command line: 'apply' applies one attack (or a chain) to an image and saves it; 'search' runs
+# attack_image() on one image of another group and prints the outcome.
+#
+# The options are read from the command line (see the top of the file), so the function has no parameters.
+# @return  None
 def main():
     ap = argparse.ArgumentParser(description="Attacks of group fakebitinvestigation")
     sub = ap.add_subparsers(dest="cmd", required=True)

@@ -49,6 +49,11 @@ N_ITER = 14                    # bisection steps
 # ----------------------------------------------------------------------------
 # WPSNR: identical copy of the code provided in the labs
 # ----------------------------------------------------------------------------
+# Contrast Sensitivity Function (CSF) of the lab WPSNR, evaluated at the spatial frequencies (u, v).
+#
+# @param u  horizontal frequencies (array)
+# @param v  vertical frequencies (array, same shape as u)
+# @return   sensitivity of the eye at each frequency (array, same shape as u)
 def _csffun(u, v):
     f = np.sqrt(u**2 + v**2)
     w = 2 * np.pi * f / 60
@@ -63,6 +68,9 @@ def _csffun(u, v):
     return Sw * Ow
 
 
+# Samples the CSF on the integer frequency grid -20..20 x -20..20.
+#
+# @return  41x41 matrix of the CSF in the frequency domain
 def _csfmat():
     min_f, max_f, step_f = -20, 20, 1
     freq_range = np.arange(min_f, max_f + step_f, step_f)
@@ -70,12 +78,20 @@ def _csfmat():
     return _csffun(u, v)
 
 
+# Turns the CSF matrix into the spatial filter used by the WPSNR (inverse FFT, real part).
+#
+# @return  41x41 spatial filter (float array)
 def _get_csf_filter():
     Fmat = _csfmat()
     filter_coeffs = np.fft.ifftshift(np.fft.ifft2(np.fft.ifftshift(Fmat)))
     return np.real(filter_coeffs)
 
 
+# WPSNR of the labs: PSNR of the difference between the two images, filtered with the CSF.
+#
+# @param image_a  first image (integers in 0..255, or floats in 0..1)
+# @param image_b  second image, same shape as image_a
+# @return         WPSNR in dB (9999999.0 if the two images are identical)
 def wpsnr(image_a, image_b):
     if image_a.shape != image_b.shape:
         raise ValueError("Input images must have the same dimensions.")
@@ -103,16 +119,28 @@ def wpsnr(image_a, image_b):
 # ----------------------------------------------------------------------------
 # PART 1: global DCT
 # ----------------------------------------------------------------------------
+# Global 2D DCT of the whole image (orthonormal).
+#
+# @param x  image as a float array
+# @return   DCT coefficients, same shape as x
 def _dct2(x):
     return dctn(x, norm='ortho')
 
 
+# Inverse of _dct2: from the DCT coefficients back to the pixels.
+#
+# @param c  DCT coefficients (float array)
+# @return   image in the pixel domain (float array, not rounded)
 def _idct2(c):
     return idctn(c, norm='ortho')
 
 
+# Chooses where the DCT part of the watermark goes: the N_BITS pairs (u,v),(u,v+1), with v even,
+# in the radial band R_MIN <= r <= R_MAX that have the largest min(|C1|, |C2|), sorted by position.
+#
+# @param coeffs  DCT coefficients of the original image
+# @return        (uu, vv): row and column of the first coefficient of each pair (arrays of N_BITS ints)
 def _select_pairs(coeffs):
-    """N_BITS pairs (u,v),(u,v+1) [v even] in the band R_MIN<=r<=R_MAX with the largest min |coeff.|."""
     H, W = coeffs.shape
     u = np.arange(H)[:, None]
     v = np.arange(0, W - 1, 2)[None, :]
@@ -130,19 +158,33 @@ def _select_pairs(coeffs):
 # ----------------------------------------------------------------------------
 # PART 2: db4 wavelet (same differential pairs, inside a subband)
 # ----------------------------------------------------------------------------
+# Wavelet decomposition (WAVELET, DWT_LEVELS levels, orthogonal with 'periodization', so Parseval
+# holds) with all the coefficients put in a single 512x512 array.
+#
+# @param x  image as a float array
+# @return   (arr, slices): array of the coefficients and the slices of each subband inside it
 def _dwt2(x):
-    """DWT coefficients (orthogonal, 'periodization': Parseval holds) put in a single 512x512 array."""
     arr, slices = pywt.coeffs_to_array(pywt.wavedec2(x, WAVELET, mode='periodization', level=DWT_LEVELS))
     return arr, slices
 
 
+# Inverse of _dwt2: from the array of wavelet coefficients back to the pixels.
+#
+# @param arr     array of the coefficients (same layout as the output of _dwt2)
+# @param slices  slices of the subbands, as returned by _dwt2
+# @return        image in the pixel domain (float array, not rounded)
 def _idwt2(arr, slices):
     return pywt.waverec2(pywt.array_to_coeffs(arr, slices, output_format='wavedec2'), WAVELET, mode='periodization')
 
 
+# Chooses where the wavelet part of the watermark goes: the N_BITS horizontal pairs (i,j),(i,j+1),
+# with j even, inside the detail subbands of the levels in DWT_USE, that have the largest
+# min(|C1|, |C2|), sorted by position.
+#
+# @param arr     wavelet coefficients of the original image (output of _dwt2)
+# @param slices  slices of the subbands (output of _dwt2)
+# @return        (ii, jj): row and column of the first coefficient of each pair (arrays of N_BITS ints)
 def _select_pairs_dwt(arr, slices):
-    """N_BITS horizontal pairs (i,j),(i,j+1) [j even] inside the detail subbands of the
-    levels in DWT_USE, with the largest min |coeff.|, sorted by position."""
     m = np.zeros(arr.shape, bool)
     for lev in DWT_USE:
         k = DWT_LEVELS - lev + 1           # in wavedec2 index 1 is the coarsest level
@@ -156,8 +198,16 @@ def _select_pairs_dwt(arr, slices):
     return ii[best], jj[best]
 
 
+# Builds the watermark pattern in the coefficient domain, with amplitude 1: +sgn(C1)*w on the first
+# coefficient of each pair (its magnitude grows by w) and -sgn(C2)*w on the second one (its
+# magnitude shrinks by w). All the other coefficients are 0.
+#
+# @param c   coefficients of the original image (DCT or wavelet array)
+# @param ii  rows of the first coefficient of each pair
+# @param jj  columns of the first coefficient of each pair (the second one is at jj + 1)
+# @param w   watermark in -1/+1 form, one value per pair
+# @return    array with the same shape as c that contains only the pushes
 def _pair_pattern(c, ii, jj, w):
-    """Pushes with amplitude 1: +sgn(C1)*w on the first coefficient, -sgn(C2)*w on the second."""
     s1 = np.where(c[ii, jj] < 0, -1.0, 1.0)
     s2 = np.where(c[ii, jj + 1] < 0, -1.0, 1.0)
     P = np.zeros_like(c)
@@ -169,6 +219,12 @@ def _pair_pattern(c, ii, jj, w):
 # ----------------------------------------------------------------------------
 # EMBEDDING (signature required by the rules)
 # ----------------------------------------------------------------------------
+# Embeds the watermark in the image: DCT part + wavelet part, with the single scale found by
+# bisection so that the WPSNR stays just above the target (TARGET_WPSNR, or TARGET_BY_IMAGE).
+#
+# @param input1  path of the original image (512x512 grayscale BMP)
+# @param input2  path of the watermark (.npy, N_BITS bits 0/1)
+# @return        watermarked image (numpy uint8 512x512)
 def embedding(input1, input2):
     original = cv2.imread(input1, cv2.IMREAD_GRAYSCALE)
     bits = np.load(input2).astype(np.float64).ravel()[:N_BITS]
@@ -183,6 +239,10 @@ def embedding(input1, input2):
     # watermark pattern in the pixels (sum of the two parts, both linear)
     pattern = K_DCT * _idct2(_pair_pattern(c, uu, vv, w)) + K_DWT * _idwt2(_pair_pattern(arr, ii, jj, w), slices)
 
+    # Watermarked image for a given scale of the pattern.
+    #
+    # @param s  scale factor of the pattern
+    # @return   original + s * pattern, rounded and clipped to uint8
     def marked(s):
         return np.clip(np.rint(o + s * pattern), 0, 255).astype(np.uint8)
 

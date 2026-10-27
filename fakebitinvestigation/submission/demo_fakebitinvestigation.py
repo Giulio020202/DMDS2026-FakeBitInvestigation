@@ -46,6 +46,13 @@ DEMO_ATTACKS = [
 ]
 
 
+# Runs the whole demo: embedding of one image, detection on the watermarked image and on the original,
+# the attacks of DEMO_ATTACKS with their detection outcome, and optionally (--attacks, --roc) the
+# automatic attack search against our detection and the quick ROC. Everything is printed on screen
+# and the images are saved in the --out folder.
+#
+# The options are read from the command line (see the usage above), so the function has no parameters.
+# @return  None
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--image", default=os.path.join(HERE, "demo_images", "0000.bmp"))
@@ -71,6 +78,13 @@ def main():
     print(f"\n=== 2. DETECTION (tau = {TAU}) ===")
     print(f"{'image given as attacked':66s} {'output1':>7s} {'output2 (WPSNR)':>16s} {'time':>7s}  outcome")
 
+    # Calls our detection with the given image as the "attacked" one and prints one row of the table
+    # (output1, output2, time and outcome).
+    #
+    # @param label        text shown in the first column
+    # @param path         path of the image given to the detection as input3
+    # @param is_original  True if path is the original image (then the expected output1 is 0)
+    # @return             None
     def run(label, path, is_original=False):
         t = time.time()
         o1, o2 = detection(a.image, p_wm, path)
