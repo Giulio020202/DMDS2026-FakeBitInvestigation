@@ -1,6 +1,8 @@
 # Capture the Mark 2026 — group `fakebitinvestigation`
 
-Submitted version: **2.0 hybrid (DCT + wavelet)**. The full explanation of the algorithm is in `fakebitinvestigation/documentation/project_explanation.pdf`; the rules are in `fakebitinvestigation/documentation/document.pdf`.
+Authors: Giulio Bazzoli, Francesco Bianchi, Luca Dematté.
+
+Submitted version: **2.0 hybrid (DCT + wavelet)**. The full explanation of the algorithm is in `fakebitinvestigation/documentation/project_explanation.pdf`; the rules are in `fakebitinvestigation/documentation/Regulations.pdf`.
 
 The code is in `fakebitinvestigation/submission/`; `fakebitinvestigation/challenge/` holds the step-by-step guide for the challenge day (`CHALLENGE_INSTRUCTIONS.pdf`), the compiled detection to upload and two helpers that only use the files of `submission/`.
 
@@ -23,8 +25,12 @@ Python 3.10 with `numpy`, `scipy`, `opencv-python`, `PyWavelets`.
 Attacks, ROC and demo also need `pillow`, `scikit-image`, `scikit-learn`, `matplotlib`.
 All of them are in the requirements of lab 1 and lab 2.
 
+Quick setup of the virtual environment, from the root of the repository:
+
 ```bash
-pip install numpy scipy opencv-python PyWavelets pillow scikit-image scikit-learn matplotlib
+python3.10 -m venv OFF_MDS_ENV
+source OFF_MDS_ENV/bin/activate
+pip install numpy scipy==1.14.1 opencv-python PyWavelets pillow scikit-image scikit-learn matplotlib
 ```
 
 All the commands below are run **from `fakebitinvestigation/submission/`**.
